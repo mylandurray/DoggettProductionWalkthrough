@@ -1004,6 +1004,32 @@ solidBtn.addEventListener('click', () => {
   setSolidBtn();
 });
 
+// autoplay: scrolls the page at a steady rate from the frame loop; any manual
+// scroll input (wheel, touch, keys, clicks elsewhere) hands control back
+const PLAY_SECONDS = 110; // full top-to-bottom run
+const playBtn = $('.play-toggle');
+let playing = false, playPos = 0;
+function setPlaying(on) {
+  playing = on;
+  playBtn.setAttribute('aria-pressed', String(on));
+  playBtn.querySelector('span').textContent = on ? 'Pause' : 'Play';
+  playBtn.title = on ? 'Pause the tour' : 'Play the tour automatically';
+  if (!on) return;
+  const max = document.documentElement.scrollHeight - innerHeight;
+  playPos = scrollY >= max - 1 ? 0 : scrollY; // replay from the top when finished
+  if (playPos === 0) scrollTo(0, 0);
+}
+playBtn.addEventListener('click', () => setPlaying(!playing));
+const stopPlay = (e) => { if (playing && !playBtn.contains(e.target)) setPlaying(false); };
+for (const ev of ['wheel', 'touchstart', 'pointerdown', 'keydown']) addEventListener(ev, stopPlay, { passive: true });
+function stepPlay(dt) {
+  if (!playing) return;
+  const max = document.documentElement.scrollHeight - innerHeight;
+  playPos = Math.min(max, playPos + (max / PLAY_SECONDS) * dt);
+  scrollTo(0, playPos);
+  if (playPos >= max) setPlaying(false);
+}
+
 // ------------------------------------------------------------------ loop
 const hint = $('.scroll-hint');
 const progress = $('.progress i');
@@ -1020,6 +1046,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const time = (now - clock0) / 1000;
+  stepPlay(dt);
   const target = scrollT();
   tView += (target - tView) * (1 - Math.exp(-dt * 6));
   if (Math.abs(target - tView) < 1e-5) tView = target;
