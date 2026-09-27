@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>How It's Done · Doggett Group</title>
-  <meta name="description" content="How it's done: follow one sheet through a production digital press, from feeder to finished stack." />
+  <title>Saddle Stitching · Doggett Group</title>
+  <meta name="description" content="How it's done: follow a set of printed sheets through a booklet maker, from hand feed to stapled, folded and square-backed booklet." />
   <script>
     // set the theme before first paint (default light)
     try { document.documentElement.dataset.theme = localStorage.getItem('dg-theme') === 'dark' ? 'dark' : 'light'; }
@@ -37,14 +37,14 @@
     </a>
     <div class="bb-title">
       <span class="bb-kicker">How it&rsquo;s done</span>
-      <span class="bb-name">The journey of a printed sheet</span>
+      <span class="bb-name">From loose sheets to a booklet</span>
     </div>
     <nav class="bb-tabs" aria-label="Processes">
-      <a class="bb-tab" href="index.html" aria-current="page">
+      <a class="bb-tab" href="index.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8.5V3.5h10v5 M7 17H4.5V9.5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1V17H17 M7 14h10v6.5H7z"/><circle cx="16.5" cy="11.5" r=".9"/></svg>
         <span>Printing</span>
       </a>
-      <a class="bb-tab" href="saddle-stitching.html">
+      <a class="bb-tab" href="saddle-stitching.html" aria-current="page">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5C9.8 5 6.8 4.5 3.5 4.8v13.4c3.3-.3 6.3.2 8.5 1.7 2.2-1.5 5.2-2 8.5-1.7V4.8C17.2 4.5 14.2 5 12 6.5z M12 6.5v13.4 M10.6 9.5h2.8 M10.6 16h2.8"/></svg>
         <span>Saddle stitching</span>
       </a>
@@ -75,16 +75,16 @@
   </aside>
 
   <div class="readout">
-    <div class="ro-row"><span>SHEET</span><b id="ro-pos">0.0</b><i>mm</i></div>
+    <div class="ro-row"><span>SET</span><b id="ro-set">6 SH · 24 PP</b></div>
     <div class="ro-row"><span>ZONE</span><b id="ro-zone">—</b></div>
-    <div class="ro-row"><span>PASS</span><b id="ro-side">1 · SIDE A</b></div>
-    <div class="ro-row"><span>TONER</span><b id="ro-toner">—</b></div>
+    <div class="ro-row"><span>STAPLES</span><b id="ro-staples">0 / 2</b></div>
+    <div class="ro-row"><span>SPINE</span><b id="ro-spine">FLAT</b></div>
   </div>
 
   <nav class="rail" aria-label="Chapters"></nav>
 
   <div class="minimap" aria-hidden="true">
-    <div class="mm-cap">SIDE ELEVATION · PAPER PATH</div>
+    <div class="mm-cap">SIDE ELEVATION · BOOKLET PATH</div>
     <svg id="minimap"></svg>
   </div>
 
@@ -92,6 +92,6 @@
 
   <div id="track"></div>
 
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/booklet/main.js"></script>
 </body>
 </html>

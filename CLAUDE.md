@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A single-page, scroll-driven 3D explainer ("How it's done · Doggett Group") that follows one A4 sheet through a production digital press (feeder → registration → 5-station tandem engine → fuser → duplex inverter → second side → cooling/decurl/sensor → finisher). Plain static HTML/CSS/ES modules — no build step, no package.json, no tests, no linter.
+Scroll-driven 3D explainers ("How it's done · Doggett Group"), one page per process, switched with the tabs in the top bar:
+
+- **Printing** (`index.html`, `js/main.js` + `js/machine.js`): one A4 sheet through a production digital press (feeder → registration → 5-station tandem engine → fuser → duplex inverter → second side → cooling/decurl/sensor → finisher).
+- **Saddle stitching** (`saddle-stitching.html`, `js/booklet/`): a 6-sheet A3 set through a hand-fed booklet maker + squarefold (after the Morgana BM60 + Squarefold 104): feed table → 2 stitch heads → fold blade + rollers → over and down → squarefold → belt stacker. The model is built feeding towards +X and mirrored in `js/booklet/main.js` (`world.scale.x = -1`, `M()` / `mx()` for cameras and labels) so sets feed from the right as on Doggett's machine.
+
+Plain static HTML/CSS/ES modules — no build step, no package.json, no tests, no linter.
 
 Dependencies load from jsDelivr via the import map in `index.html`: `three@0.180.0` (plus `three/addons/` for postprocessing and `BufferGeometryUtils`) and `animejs@4.5.0`.
 
@@ -13,6 +18,14 @@ Dependencies load from jsDelivr via the import map in `index.html`: `three@0.180
 Serve the directory over HTTP (ES modules + import map won't work from `file://`). `.claude/launch.json` defines a `press` config: `python -m http.server 5173` → http://localhost:5173. Use `preview_start {name: "press"}` to open it.
 
 ## Architecture
+
+Shared by both pages:
+
+- **`js/core/stage.js`** — renderer, scene, camera (with the panel view offset), bloom composer, resize.
+- **`js/core/story.js`** — `ease`/`lerp`/`keyed`, chapter panel + rail (`createChapters`), camera rig (`createCameraRig`, one shot per chapter), SVG callouts (`createLabels`; `at` may be a function), theme/solid toggles, autoplay and `runLoop` (scroll → story time; `#t=<story time>` in the URL deep-links to a moment).
+- **`js/core/batch.js`** — `Batch` line-work builder, `rollerObj`, `solidPart`, `lm`.
+
+Printing page:
 
 - **`js/main.js`** — everything runtime: renderer + composer (bloom, only enabled in dark theme), timeline, chapters, sheet/ribbon/trail geometry, camera, HUD readout, SVG callout labels, minimap, theme + solid toggles, and the `frame()` loop. It uses top-level `await` (fonts) before building textures.
 - **`js/machine.js`** — builds the wireframe press model with `createPress(scene, pal)`, returning handles (`P0/P1/P2` paths, `belt`, `doors`, `rotors`, `lasers`, `diverter`, …) plus `setTheme(pal)` and `setSolid(k)`. Also exports geometry constants (`L`, `W`, `PAPER_Y`, `STATIONS`, `MODULES`, `FEED_DY`, …). Units: **1 = 100 mm**; X = feed→delivery length, Y = up, Z = depth (+ = front).
@@ -30,5 +43,7 @@ Serve the directory over HTTP (ES modules + import map won't work from `file://`
    - `beltTravel` — belt keeps moving while the sheet waits at registration (`T_IMG0`–`T_REL`) so the image builds, then locks to the sheet.
 4. `CH` chapters (with `t0` start times) drive the panel text, rail, and camera; chapter `t0`s must line up with the `DKEYS` segments they describe.
 5. Each `update*` function in `frame()` consumes that state object — keep per-frame logic stateless w.r.t. scroll direction so scrubbing backwards works.
+
+Saddle-stitching page: `js/booklet/machine.js` (model + paths `T` table and `P` spine route), `js/booklet/set.js` (the nested sheets: one `writeSet` places every sheet from `sc`, `p`, `qz`, so creep and the round → square spine fall out of the geometry; page artwork atlas), `js/booklet/main.js` (keyframe table `K`, chapters, cameras, HUD, labels, minimap). Sheet spacing `TH` is exaggerated ~25×, so page content keeps a wide spine-side margin.
 
 Adding a new moving part generally means: build it in `createPress` and return a handle, colour it in `setTheme` (and add palette keys to both themes), then animate it from `updateMechanics` in `main.js`.
