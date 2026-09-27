@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Saddle Stitching · Doggett Group</title>
-  <meta name="description" content="How it's done: follow a set of printed sheets through a booklet maker, from hand feed to stapled, folded and square-backed booklet." />
+  <title>Perfect Binding · Doggett Group</title>
+  <meta name="description" content="How it's done: follow a book block through a perfect binder, from clamp and milling to hot-melt glue, cover and nip." />
   <script>
     // set the theme before first paint (default light)
     try { document.documentElement.dataset.theme = localStorage.getItem('dg-theme') === 'dark' ? 'dark' : 'light'; }
@@ -37,18 +37,18 @@
     </a>
     <div class="bb-title">
       <span class="bb-kicker">How it&rsquo;s done</span>
-      <span class="bb-name">From loose sheets to a booklet</span>
+      <span class="bb-name">From loose pages to a paperback</span>
     </div>
     <nav class="bb-tabs" aria-label="Processes">
       <a class="bb-tab" href="index.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8.5V3.5h10v5 M7 17H4.5V9.5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1V17H17 M7 14h10v6.5H7z"/><circle cx="16.5" cy="11.5" r=".9"/></svg>
         <span>Printing</span>
       </a>
-      <a class="bb-tab" href="saddle-stitching.html" aria-current="page">
+      <a class="bb-tab" href="saddle-stitching.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5C9.8 5 6.8 4.5 3.5 4.8v13.4c3.3-.3 6.3.2 8.5 1.7 2.2-1.5 5.2-2 8.5-1.7V4.8C17.2 4.5 14.2 5 12 6.5z M12 6.5v13.4 M10.6 9.5h2.8 M10.6 16h2.8"/></svg>
         <span>Saddle stitching</span>
       </a>
-      <a class="bb-tab" href="perfect-binding.html">
+      <a class="bb-tab" href="perfect-binding.html" aria-current="page">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 3.5h11v17h-11A2 2 0 0 1 5.5 18.5v-13a2 2 0 0 1 2-2z M9 3.5v17 M11.5 8h4.5 M11.5 10.5h3"/></svg>
         <span>Perfect binding</span>
       </a>
@@ -79,23 +79,23 @@
   </aside>
 
   <div class="readout">
-    <div class="ro-row"><span>SET</span><b id="ro-set">6 SH · 24 PP</b></div>
     <div class="ro-row"><span>ZONE</span><b id="ro-zone">—</b></div>
-    <div class="ro-row"><span>STAPLES</span><b id="ro-staples">0 / 2</b></div>
-    <div class="ro-row"><span>SPINE</span><b id="ro-spine">FLAT</b></div>
+    <div class="ro-row"><span>CLAMP</span><b id="ro-clamp">OPEN</b></div>
+    <div class="ro-row"><span>SPINE</span><b id="ro-spine">—</b></div>
+    <div class="ro-row"><span>COVER</span><b id="ro-cover">IN TRAY</b></div>
   </div>
 
   <nav class="rail" aria-label="Chapters"></nav>
 
   <div class="minimap" aria-hidden="true">
-    <div class="mm-cap">SIDE ELEVATION · BOOKLET PATH</div>
+    <div class="mm-cap">PLAN VIEW · BOOK + COVER</div>
     <svg id="minimap"></svg>
   </div>
 
   <div class="scroll-hint"><span>Scroll</span><i></i></div>
 
-  <div id="track"></div>
+  <div id="track" class="short"></div>
 
-  <script type="module" src="js/booklet/main.js"></script>
+  <script type="module" src="js/binder/main.js"></script>
 </body>
 </html>

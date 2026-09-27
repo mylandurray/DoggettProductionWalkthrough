@@ -20,7 +20,7 @@ export const PALETTES = {
     deckFill: '#2b333d', glassFill: '#a9d2ee', fill: '#c3d1df',
     // paper path + sheet
     rail: '#8ea4ba', trail: BRAND.blue, trail2: BRAND.grey, outline: BRAND.blue,
-    paper: '#ffffff', paperGrid: '#a9bccd', paperGain: 0.96, staple: '#4d5963',
+    paper: '#ffffff', paperGrid: '#a9bccd', paperGain: 0.96, staple: '#4d5963', glue: '#e3a93a',
     // minimap
     mmGround: '#c6d2dd', mmModule: '#9fb3c6', mmPath: '#c0ccd8', mmBelt: '#8ba3ba', mmSheet: '#0b2f52',
     stations: { P: '#ee7fb6', Y: '#dcb000', M: '#e0007a', C: '#0098dc', K: '#2a2c2e' },
@@ -38,7 +38,7 @@ export const PALETTES = {
     solids: ['#1b2d42', '#243a52', '#14233a'], cavity: '#08111c', doorSolid: '#213751',
     deckFill: '#05080b', glassFill: '#2a5a7a', fill: '#1a2a3d',
     rail: '#2d5e8c', trail: '#3d9bea', trail2: '#b9bec4', outline: '#6fb6f2',
-    paper: '#d7dee6', paperGrid: '#7f97ad', paperGain: 0.8, staple: '#e4ecf3',
+    paper: '#d7dee6', paperGrid: '#7f97ad', paperGain: 0.8, staple: '#e4ecf3', glue: '#ffc45e',
     mmGround: '#243449', mmModule: '#35506c', mmPath: '#2c4661', mmBelt: '#44617f', mmSheet: '#e4f1ff',
     stations: { P: '#ffb0d6', Y: '#ffe14a', M: '#ff4fa8', C: '#2ec8ff', K: '#aeb8c2' },
     sMech: '#3a5572', sDim: '#2a3f57', sPaper: '#d9d3c4', sBelt: '#263749', sGuide: '#4d6d8e', sFuser: '#c65a2c',
