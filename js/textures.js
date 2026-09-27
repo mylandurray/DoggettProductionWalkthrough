@@ -3,10 +3,11 @@
 import * as THREE from 'three';
 
 const W = 840, H = 1188; // A4 portrait ratio
+const HL = Math.round((H * 660) / 297); // 660 mm long sheet, same width
 
-function makeCanvas() {
+function makeCanvas(h = H) {
   const c = document.createElement('canvas');
-  c.width = W; c.height = H;
+  c.width = W; c.height = h;
   return [c, c.getContext('2d')];
 }
 
@@ -175,6 +176,71 @@ function sideB() {
   return [c, m];
 }
 
+// Long-sheet banner (simplex): tall sunset plate, tone ramps, colour bar.
+function banner() {
+  const [c, ctx] = makeCanvas(HL);
+  const [m, mx] = makeCanvas(HL);
+  const r = rng(33);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, HL);
+  mx.fillStyle = '#000'; mx.fillRect(0, 0, W, HL);
+
+  header(ctx, 'LONG SHEET / 660 MM', 'FORM 02 · UPPER TRAY · SIMPLEX · ONE PASS');
+
+  // tall sunset plate
+  const x0 = 60, y0 = 200, w = W - 120, h = 1180;
+  const sky = ctx.createLinearGradient(0, y0, 0, y0 + h);
+  sky.addColorStop(0, '#071f5c');
+  sky.addColorStop(0.35, '#2a4fa8');
+  sky.addColorStop(0.62, '#e0508a');
+  sky.addColorStop(0.82, '#ffa53a');
+  sky.addColorStop(1, '#ffe08a');
+  ctx.fillStyle = sky; ctx.fillRect(x0, y0, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let i = 0; i < 90; i++) ctx.fillRect(x0 + r() * w, y0 + r() * h * 0.4, 2.5, 2.5);
+  ctx.fillStyle = '#fff3c4';
+  ctx.beginPath(); ctx.arc(x0 + w * 0.34, y0 + h * 0.8, 90, 0, Math.PI * 2); ctx.fill();
+  const ridge = (base, amp, col, seed) => {
+    const rr = rng(seed);
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(x0, y0 + h);
+    for (let i = 0; i <= 24; i++) {
+      ctx.lineTo(x0 + (w * i) / 24, y0 + base - amp * (0.4 + rr() * 0.6) * Math.abs(Math.sin(i * 0.7 + seed)));
+    }
+    ctx.lineTo(x0 + w, y0 + h); ctx.closePath(); ctx.fill();
+  };
+  ridge(h * 0.88, 200, '#3a2d63', 5);
+  ridge(h * 0.96, 130, '#1e1b3a', 11);
+
+  // title band
+  ctx.fillStyle = '#111';
+  ctx.font = '700 92px "IBM Plex Sans Condensed", "Arial Narrow", sans-serif';
+  ctx.fillText('660 × 210', 60, 1500);
+  ctx.font = '500 22px "IBM Plex Mono", monospace';
+  ctx.fillStyle = '#555';
+  ctx.fillText('BANNER · COVER · WRAP', 64, 1540);
+
+  // tone ramps, one per ink
+  const inks = ['#00a3e0', '#e6007e', '#ffe600', '#1a1a1a', '#e5332a', '#00973a', '#312783'];
+  const rw = (W - 120) / inks.length;
+  inks.forEach((ink, i) => {
+    const g = ctx.createLinearGradient(0, 1600, 0, 2260);
+    g.addColorStop(0, ink); g.addColorStop(1, '#ffffff');
+    ctx.fillStyle = g;
+    ctx.fillRect(60 + i * rw, 1600, rw - 6, 660);
+  });
+
+  textLines(ctx, 60, 2310, 340, 10, r);
+  textLines(ctx, 440, 2310, 340, 10, r);
+  colorBar(ctx, 2520);
+  for (const y of [30, HL / 2, HL - 30]) { regMark(ctx, 30, y); regMark(ctx, W - 30, y); }
+
+  // specialty: frame round the plate + a rule under the title
+  mx.strokeStyle = '#fff'; mx.lineWidth = 14;
+  mx.strokeRect(x0 - 16, y0 - 16, w + 32, h + 32);
+  mx.fillStyle = '#fff'; mx.fillRect(60, 1560, W - 120, 12);
+  return [c, m];
+}
+
 function toTex(canvas, srgb) {
   const t = new THREE.CanvasTexture(canvas);
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
@@ -191,4 +257,9 @@ export function makePrintTextures() {
     A: toTex(a, true), spotA: toTex(am, false),
     B: toTex(b, true), spotB: toTex(bm, false),
   };
+}
+
+export function makeBannerTextures() {
+  const [c, m] = banner();
+  return { A: toTex(c, true), spotA: toTex(m, false) };
 }

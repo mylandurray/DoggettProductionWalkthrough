@@ -4,8 +4,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { animate, stagger } from 'animejs';
-import { createPress, L, W, BELT_W, PAPER_Y, STATIONS, MODULES, FEED_DY } from './machine.js';
-import { makePrintTextures } from './textures.js';
+import { createPress, L, L_LONG, W, BELT_W, PAPER_Y, STATIONS, MODULES, FEED_DY, FEED_Y_UPPER } from './machine.js';
+import { makePrintTextures, makeBannerTextures } from './textures.js';
 import { PALETTES, storedTheme, storeTheme, storedSolid, storeSolid } from './theme.js';
 
 const MM = 100; // mm per scene unit
@@ -42,11 +42,12 @@ composer.addPass(new OutputPass());
 
 // ------------------------------------------------------------------ model
 const press = createPress(scene, pal);
-const { P0, P1, P2, belt } = press;
+const { P0, P1, P2, P3, belt } = press;
 
 await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]);
 const tex = makePrintTextures();
-tex.A.anisotropy = tex.B.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const texLong = makeBannerTextures();
+tex.A.anisotropy = tex.B.anisotropy = texLong.A.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // ------------------------------------------------------------------ timeline
 // D = distance the sheet's leading edge has travelled along P1 then P2.
@@ -70,6 +71,17 @@ const DKEYS = [
 ];
 const SKEWKEYS = [[0, 1], [0.178, 1], [0.218, 0], [1, 0]];
 
+// Epilogue (t 1 → T_END): a long sheet fed from the upper tray, simplex,
+// straight through to the top tray. DL = its leading edge along P3; it starts
+// resting in the tray like the A4 sheet did.
+const T_END = 1.3;
+const DL0 = L;
+const DLKEYS = [
+  [1.06, DL0], [1.115, P3.marks.reg], [1.13, P3.marks.reg],
+  [1.205, P3.marks.fuser + L_LONG + 0.1], [1.22, P3.marks.fuser + L_LONG + 0.1],
+  [1.29, P3.marks.finExit + L_LONG + 0.25],
+];
+
 function keyed(keys, t) {
   if (t <= keys[0][0]) return keys[0][1];
   for (let i = 1; i < keys.length; i++) {
@@ -91,6 +103,8 @@ const mStart1 = M0 - cFirst;
 const Mr = mStart1 + belt.len - (K1.nip - K1.reg);
 const KM = Mr - K1.reg;
 const mStart2 = K2.nip + KM - belt.len;
+// epilogue: belt locked to the long sheet, its image reaching the nip with it
+const mStart3 = K2.end + KM - DL0 + P3.marks.nip - belt.len;
 function beltTravel(t, D) {
   if (t < T_IMG0) return D - L;
   if (t < T_REL) return lerp(M0, Mr, ease((t - T_IMG0) / (T_REL - T_IMG0)));
@@ -159,8 +173,24 @@ const CH = [
     body: 'In a matter of seconds, one sheet is fed, lined up, printed on both sides, heat-set, cooled, colour-checked and stacked. Repeat that thousands of times and you have your print run.',
     specs: [['Distance travelled', `${Math.round(TRAVEL_MM).toLocaleString()} mm`], ['Trips through the heat', '2'], ['Sides printed', '2']],
   },
+  {
+    t0: 1.0, kicker: 'Long sheets', title: 'Going beyond A4',
+    body: 'The same press can run long sheets for banners, book covers and wraps. A 660 mm sheet sits in the upper tray, with an extension pulled out to carry the overhang, and is picked up just like any other sheet.',
+    specs: [['Sheet length', '660 mm'], ['Fed from', 'upper tray'], ['Overhang', 'tray extension']],
+  },
+  {
+    t0: 1.12, kicker: 'Long sheets', title: 'One long pass',
+    body: 'The belt builds an image as long as the sheet, and the whole length is transferred and heat-set in one continuous run. This job is single-sided, so the gate stays up and the sheet carries straight on instead of flipping.',
+    specs: [['Image length', '660 mm'], ['Sides printed', '1'], ['Diverter gate', 'straight through']],
+  },
+  {
+    t0: 1.215, kicker: 'Long sheets', title: 'Out onto the extension',
+    body: 'It’s cooled, flattened and colour-checked like every other sheet, then the exit rollers feed it onto the top tray, where a pull-out extension catches the extra length.',
+    specs: [['Delivery', 'top tray + extension'], ['Distance travelled', `${Math.round((P3.marks.finExit + L_LONG + 0.25 - DL0) * MM).toLocaleString()} mm`]],
+  },
 ];
 const CH_IMAGE = CH.findIndex((c) => c.kicker === 'Building the image');
+const CH_SUMMARY = CH.findIndex((c) => c.kicker === 'Summary');
 const chapterAt = (t) => {
   let i = 0;
   for (let k = 0; k < CH.length; k++) if (t >= CH[k].t0) i = k;
@@ -172,13 +202,16 @@ const railMatBase = new THREE.LineDashedMaterial({ color: pal.rail, dashSize: 0.
 const trailMat = new THREE.LineBasicMaterial({ color: pal.trail, transparent: true, opacity: 1 });
 const trailMat2 = new THREE.LineBasicMaterial({ color: pal.trail2, transparent: true, opacity: 1 });
 const trails = [];
-for (const [path, mat] of [[P1, trailMat], [P2, trailMat2]]) {
+// P3 runs over rails already drawn for P0 / P1 / P2, so it only gets a trail
+for (const [path, mat, rail] of [[P1, trailMat, true], [P2, trailMat2, true], [P3, trailMat, false]]) {
   for (const z of [-(W / 2 + 0.12), W / 2 + 0.12]) {
     const pts = path.pts.map(([x, y]) => new THREE.Vector3(x, y, z));
     const g = new THREE.BufferGeometry().setFromPoints(pts);
-    const base = new THREE.Line(g, railMatBase);
-    base.computeLineDistances();
-    scene.add(base);
+    if (rail) {
+      const base = new THREE.Line(g, railMatBase);
+      base.computeLineDistances();
+      scene.add(base);
+    }
     const tr = new THREE.Line(g.clone(), mat);
     tr.frustumCulled = false;
     scene.add(tr);
@@ -210,14 +243,15 @@ function makeRibbon(N, material, attrs) {
   return mesh;
 }
 
-const sheetMat = new THREE.ShaderMaterial({
+const makeSheetMat = (texA, spotA, texB, spotB) => new THREE.ShaderMaterial({
   side: THREE.DoubleSide,
   transparent: true,
   depthWrite: true,
   uniforms: {
-    uTexA: { value: tex.A }, uTexB: { value: tex.B },
-    uSpotA: { value: tex.spotA }, uSpotB: { value: tex.spotB },
+    uTexA: { value: texA }, uTexB: { value: texB },
+    uSpotA: { value: spotA }, uSpotB: { value: spotB },
     uPass: { value: 0 },
+    uAlpha: { value: 1 },
     uPaper: { value: new THREE.Color(pal.paper) },
     uGrid: { value: new THREE.Color(pal.paperGrid) },
     uGain: { value: pal.paperGain },
@@ -236,7 +270,7 @@ const sheetMat = new THREE.ShaderMaterial({
     }`,
   fragmentShader: /* glsl */ `
     uniform sampler2D uTexA, uTexB, uSpotA, uSpotB;
-    uniform float uPass, uGain;
+    uniform float uPass, uGain, uAlpha;
     uniform vec3 uPaper, uGrid, uPink, uHeat;
     varying vec2 vUv;
     varying vec4 vFront;
@@ -267,20 +301,27 @@ const sheetMat = new THREE.ShaderMaterial({
       col = mix(col, uHeat, st.z * 0.55);
       float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
       col *= 0.9 + 0.1 * smoothstep(0.0, 0.02, e);
-      gl_FragColor = vec4(col * uGain, 0.97);
+      gl_FragColor = vec4(col * uGain, 0.97 * uAlpha);
     }`,
 });
-const SN = 110;
-const sheet = makeRibbon(SN, sheetMat, { aFront: 4, aBack: 4 });
-sheet.renderOrder = 5;
-scene.add(sheet);
-
-const outlineGeo = new THREE.BufferGeometry();
-outlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SN + 1) * 2 * 3), 3));
-const outline = new THREE.LineLoop(outlineGeo, new THREE.LineBasicMaterial({ color: pal.outline }));
-outline.frustumCulled = false;
-outline.renderOrder = 6;
-scene.add(outline);
+function makeSheet(N, mat) {
+  const mesh = makeRibbon(N, mat, { aFront: 4, aBack: 4 });
+  mesh.renderOrder = 5;
+  scene.add(mesh);
+  const og = new THREE.BufferGeometry();
+  og.setAttribute('position', new THREE.BufferAttribute(new Float32Array((N + 1) * 2 * 3), 3));
+  const outline = new THREE.LineLoop(og, new THREE.LineBasicMaterial({ color: pal.outline, transparent: true }));
+  outline.frustumCulled = false;
+  outline.renderOrder = 6;
+  scene.add(outline);
+  return { N, mesh, mat, outline };
+}
+// the long sheet's back stays blank (simplex), so side B's maps are just placeholders
+const sheets = [
+  makeSheet(110, makeSheetMat(tex.A, tex.spotA, tex.B, tex.spotB)),
+  makeSheet(260, makeSheetMat(texLong.A, texLong.spotA, tex.B, tex.spotB)),
+];
+const [sheetA4, sheetLong] = sheets;
 
 const beltImgMat = (texMap, spotMap) => new THREE.ShaderMaterial({
   side: THREE.DoubleSide,
@@ -330,64 +371,81 @@ const BN = 90;
 const beltImgs = [
   { mesh: makeRibbon(BN, beltImgMat(tex.A, tex.spotA), { aLayers: 1 }), mStart: mStart1 },
   { mesh: makeRibbon(BN, beltImgMat(tex.B, tex.spotB), { aLayers: 1 }), mStart: mStart2 },
+  { mesh: makeRibbon(200, beltImgMat(texLong.A, texLong.spotA), { aLayers: 1 }), mStart: mStart3, len: L_LONG, long: true },
 ];
 for (const b of beltImgs) { b.mesh.renderOrder = 4; scene.add(b.mesh); }
 
 // ------------------------------------------------------------------ state
 function computeState(t) {
   const D = keyed(DKEYS, t);
-  const m = beltTravel(t, D);
+  const DL = keyed(DLKEYS, t);
+  const dl = DL - DL0; // epilogue travel; belt + rollers keep turning with it
+  const m = beltTravel(t, D) + dl;
   const skew = keyed(SKEWKEYS, t);
   const pass = D <= P1.total ? 0 : 1;
   const path = pass ? P2 : P1;
   const head = pass ? D - off2 : D;
   const ch = chapterAt(t);
-  return { t, D, m, skew, pass, path, head, ch };
+  const long = t >= 1;
+  // the sheet the camera, HUD and machine react to
+  const act = long ? { path: P3, head: DL, len: L_LONG } : { path, head, len: L };
+  return {
+    t, D, DL, roll: D + dl, m, skew, pass, path, head, ch, long, act,
+    feedExt: ease((t - 1.015) / 0.03), longA: clamp((t - 1.04) / 0.015), outExt: ease((t - 1.215) / 0.03),
+  };
 }
 
 const q = [0, 0, 0, 0];
-function updateSheet(st) {
-  const pos = sheet.geometry.attributes.position.array;
-  const uv = sheet.geometry.attributes.uv.array;
-  const af = sheet.geometry.attributes.aFront.array;
-  const ab = sheet.geometry.attributes.aBack.array;
-  const ol = outlineGeo.attributes.position.array;
-  const { path, head, pass } = st;
-  const nip = pass ? P2.marks.nip : P1.marks.nip;
-  const fus = pass ? P2.marks.fuser : P1.marks.fuser;
-  const skewA = st.skew * 0.07, lat = st.skew * 0.14;
-  for (let i = 0; i <= SN; i++) {
-    const a = i / SN;
-    const s = head - a * L;
+// Lay a sheet of length len along path with its leading edge at head. `lift`
+// raises it off the path (the long sheet lands on top of the A4 one).
+function writeSheet(sh, path, head, len, pass, skew = 0, lift = 0) {
+  const { N, mesh } = sh;
+  const pos = mesh.geometry.attributes.position.array;
+  const uv = mesh.geometry.attributes.uv.array;
+  const af = mesh.geometry.attributes.aFront.array;
+  const ab = mesh.geometry.attributes.aBack.array;
+  const ol = sh.outline.geometry.attributes.position.array;
+  const nip = path.marks.nip, fus = path.marks.fuser;
+  const skewA = skew * 0.07, lat = skew * 0.14;
+  for (let i = 0; i <= N; i++) {
+    const a = i / N;
+    const s = head - a * len;
     path.sample(s, q);
-    const zo = lat - skewA * a * L;
+    const x = q[0] - q[3] * lift, y = q[1] + q[2] * lift;
+    const zo = lat - skewA * a * len;
     const m = pass ? 1 - a : a;
     const printed = clamp((s - nip) / 0.03 + 0.5);
     const fused = clamp((s - fus) / 0.03 + 0.5);
     const heat = fused > 0 ? Math.exp(-(s - fus) / 1.4) * fused : 0;
     for (let k = 0; k < 2; k++) {
       const v = 2 * i + k;
-      pos[v * 3] = q[0];
-      pos[v * 3 + 1] = q[1];
+      pos[v * 3] = x;
+      pos[v * 3 + 1] = y;
       pos[v * 3 + 2] = (k ? W / 2 : -W / 2) + zo;
       uv[v * 2] = k;
       uv[v * 2 + 1] = m;
-      if (pass === 0) {
-        af.set([printed, fused, heat, 0], v * 4);
-        ab.set([0, 0, heat, 0], v * 4);
-      } else {
-        af.set([printed, fused, heat, 0], v * 4);
-        ab.set([1, 1, heat, 0], v * 4);
-      }
-      const oi = k === 0 ? i : 2 * SN + 1 - i;
-      ol[oi * 3] = q[0];
-      ol[oi * 3 + 1] = q[1];
+      af.set([printed, fused, heat, 0], v * 4);
+      if (pass === 0) ab.set([0, 0, heat, 0], v * 4);
+      else ab.set([1, 1, heat, 0], v * 4);
+      const oi = k === 0 ? i : 2 * N + 1 - i;
+      ol[oi * 3] = x;
+      ol[oi * 3 + 1] = y;
       ol[oi * 3 + 2] = (k ? W / 2 : -W / 2) + zo;
     }
   }
-  sheetMat.uniforms.uPass.value = pass;
-  for (const n of ['position', 'uv', 'aFront', 'aBack']) sheet.geometry.attributes[n].needsUpdate = true;
-  outlineGeo.attributes.position.needsUpdate = true;
+  sh.mat.uniforms.uPass.value = pass;
+  for (const n of ['position', 'uv', 'aFront', 'aBack']) mesh.geometry.attributes[n].needsUpdate = true;
+  sh.outline.geometry.attributes.position.needsUpdate = true;
+}
+
+function updateSheets(st) {
+  writeSheet(sheetA4, st.path, st.head, L, st.pass, st.skew);
+  const vis = st.longA > 0.001;
+  sheetLong.mesh.visible = sheetLong.outline.visible = vis;
+  if (!vis) return;
+  writeSheet(sheetLong, P3, st.DL, L_LONG, 0, 0, 0.03);
+  sheetLong.mat.uniforms.uAlpha.value = st.longA;
+  sheetLong.outline.material.opacity = st.longA;
 }
 
 const stationC = belt.stations.map((s) => s.c);
@@ -395,16 +453,17 @@ const laserActive = new Array(stationC.length).fill(0);
 function updateBeltImages(st) {
   laserActive.fill(0);
   for (const b of beltImgs) {
-    const h = st.m - b.mStart;
+    const h = st.m - b.mStart, len = b.len || L;
     const g = b.mesh.geometry;
     const pos = g.attributes.position.array, uv = g.attributes.uv.array, la = g.attributes.aLayers.array;
-    const visible = h > cFirst && h - L < belt.len;
+    const visible = h > cFirst && h - len < belt.len && (!b.long || st.long);
     b.mesh.visible = visible;
     if (!visible) continue;
-    for (let k = 0; k < stationC.length; k++) if (stationC[k] <= h && stationC[k] >= h - L) laserActive[k] = 1;
-    for (let i = 0; i <= BN; i++) {
-      const a = i / BN;
-      const c = h - a * L;
+    for (let k = 0; k < stationC.length; k++) if (stationC[k] <= h && stationC[k] >= h - len) laserActive[k] = 1;
+    const n = la.length / 2 - 1;
+    for (let i = 0; i <= n; i++) {
+      const a = i / n;
+      const c = h - a * len;
       belt.sample(c, q);
       const nx = q[3], ny = -q[2];
       let layers = 0;
@@ -427,8 +486,10 @@ function updateBeltImages(st) {
 function updateTrails(st) {
   for (const tr of trails) {
     let s = -1;
-    if (tr.path === P1) s = st.pass === 0 ? st.head : P1.total;
-    else s = st.pass === 1 ? st.head : -1;
+    // the epilogue's long sheet gets a fresh trail
+    if (st.long) s = tr.path === P3 ? st.DL : -1;
+    else if (tr.path === P1) s = st.pass === 0 ? st.head : P1.total;
+    else if (tr.path === P2) s = st.pass === 1 ? st.head : -1;
     const n = s < 0 ? 0 : tr.path.indexAt(s) + 1;
     tr.line.geometry.setDrawRange(0, n);
   }
@@ -437,7 +498,7 @@ function updateTrails(st) {
 const fuserBase = new THREE.Color(pal.fuser);
 function updateMechanics(st, time) {
   for (const r of press.rotors) {
-    const d = r.src === 'm' ? st.m : st.D;
+    const d = r.src === 'm' ? st.m : st.roll;
     r.obj.rotation.z = (-d / r.r) * r.sign;
   }
   // belt cross lines
@@ -466,7 +527,8 @@ function updateMechanics(st, time) {
 
   // fuser glow when the sheet is in the nip
   const fx = 18.75;
-  const inFuser = st.path.sample(st.head, q)[0] > fx - 0.3 && st.path.sample(st.head - L, q)[0] < fx + 0.3 && Math.abs(q[1] - PAPER_Y) < 0.5;
+  const { path: ap, head: ah, len: al } = st.act;
+  const inFuser = ap.sample(ah, q)[0] > fx - 0.3 && ap.sample(ah - al, q)[0] < fx + 0.3 && Math.abs(q[1] - PAPER_Y) < 0.5;
   const glow = 0.75 + (inFuser ? 0.6 : 0) + 0.1 * Math.sin(time * 3);
   press.mats.fuser.color.copy(fuserBase).multiplyScalar(glow);
   press.mats.lamp.opacity = 0.6 + (inFuser ? 0.4 : 0);
@@ -474,32 +536,41 @@ function updateMechanics(st, time) {
   // inline sensor beam
   const sx = P2.sample(P2.marks.sensor, q)[0];
   let sensing = false;
-  if (st.pass === 1) {
-    const h = st.path.sample(st.head, q)[0];
-    const tl = st.path.sample(st.head - L, q)[0];
+  if (st.pass === 1 || st.long) {
+    const h = ap.sample(ah, q)[0];
+    const tl = ap.sample(ah - al, q)[0];
     sensing = h > sx && tl < sx && Math.abs(q[1] - PAPER_Y) < 0.5;
   }
   press.sensorMat.opacity = sensing ? 0.7 + 0.3 * Math.sin(time * 20) : 0.18;
 
-  // air knife streaks
-  const ap = press.air.geometry.attributes.position.array;
-  const airOn = st.D < K1.reg - 1 ? 1 : 0.15;
-  press.mats.air.opacity = 0.75 * airOn;
+  // air knife streaks, over whichever tray is feeding
+  const airP = press.air.geometry.attributes.position.array;
+  const feeding = st.long ? st.feedExt > 0.99 && st.DL < P3.marks.reg - 1 : st.D < K1.reg - 1;
+  press.mats.air.opacity = 0.75 * (feeding ? 1 : 0.15);
+  const airY = 6.9 + (st.long ? 0 : FEED_DY);
   for (let i = 0; i < press.nAir; i++) {
     const ph = (time * 1.4 + i * 0.37) % 1;
     const z = -1.0 + (2.0 * ((i * 7) % press.nAir)) / (press.nAir - 1);
-    const y = 6.9 + ((i * 3) % 5) * 0.06;
+    const y = airY + ((i * 3) % 5) * 0.06;
     const x = 3.84 - ph * 0.9;
-    ap.set([x, y, z, x - 0.18, y + 0.02, z], i * 6);
+    airP.set([x, y, z, x - 0.18, y + 0.02, z], i * 6);
   }
   press.air.geometry.attributes.position.needsUpdate = true;
+
+  // long-sheet extensions: feed side slides out of the HCF, delivery side
+  // pulls out of the top tray as its end stop folds flat
+  press.feedExt.position.x = lerp(3.4, 0, st.feedExt);
+  press.feedExt.visible = st.feedExt > 0.001;
+  press.out.ext.position.x = -press.out.extLen * (1 - st.outExt);
+  press.out.ext.visible = st.outExt > 0.001;
+  press.out.stop.rotation.z = (-st.outExt * Math.PI) / 2;
 }
 
 // ------------------------------------------------------------------ intro reveal
 // The first INTRO of the scroll happens before the story starts: the press is
 // closed up and solid, the doors swing / slide open module by module, then the
 // doors and skins fade to leave the wireframe.
-const INTRO = 0.1;
+const INTRO = 0.08;
 let deckOpen = 0.6;
 function updateReveal(r) {
   const open = (d) => ease((r - 0.06 - d.mod * 0.08) / 0.34);
@@ -559,6 +630,13 @@ const CAMS = [
   () => ({ p: V(26.6, 8.6, 10.6), t: V(23.4, 5.9, 0) }),
   () => ({ p: V(38.5, 13.8, 15.5), t: V(31.2, 8.2, 0) }),
   () => ({ p: V(38, 20, 44), t: V(17.8, 5.2, 0) }),
+  () => ({ p: V(-4.5, 13.8, 22.5), t: V(2.4, 6.6, 0) }),
+  () => {
+    // ride along with the long sheet through the engine
+    const t = V(14, 6.6, 0).lerp(headPoint, 0.55);
+    return { p: t.clone().add(V(-1.5, 6.2, 19)), t };
+  },
+  () => ({ p: V(38.5, 15.5, 23), t: V(34.2, 8.6, 0) }),
 ];
 const mouse = { x: 0, y: 0, sx: 0, sy: 0 };
 addEventListener('pointermove', (e) => {
@@ -568,10 +646,10 @@ addEventListener('pointermove', (e) => {
 const camPos = new THREE.Vector3(), camTgt = new THREE.Vector3();
 let camInit = false;
 function updateCamera(st, dt) {
-  st.path.sample(st.head - L / 2, q);
+  st.act.path.sample(st.act.head - st.act.len / 2, q);
   headPoint.set(q[0], q[1], 0);
   const i = st.ch;
-  const t0 = CH[i].t0, t1 = i + 1 < CH.length ? CH[i + 1].t0 : 1;
+  const t0 = CH[i].t0, t1 = i + 1 < CH.length ? CH[i + 1].t0 : T_END;
   const p = (st.t - t0) / (t1 - t0);
   const cur = CAMS[i]();
   let pos = cur.p, tgt = cur.t;
@@ -600,7 +678,7 @@ function updateCamera(st, dt) {
   camera.lookAt(camTgt);
 
   // housings recede while we're looking inside
-  const sh = i === 0 || i === CH.length - 1 ? 0.5 : 0.2;
+  const sh = i === 0 || i === CH_SUMMARY ? 0.5 : 0.2;
   press.mats.shell.opacity += (sh - press.mats.shell.opacity) * 0.1;
   press.mats.panel.opacity += (sh * 0.7 - press.mats.panel.opacity) * 0.1;
   press.mats.deck.opacity += (sh * 1.24 - press.mats.deck.opacity) * 0.1;
@@ -621,9 +699,9 @@ CH.forEach((c, i) => {
   b.setAttribute('aria-label', c.title);
   b.addEventListener('click', () => {
     const max = document.documentElement.scrollHeight - innerHeight;
-    const next = i + 1 < CH.length ? CH[i + 1].t0 : 1;
-    const tt = i === 0 ? 0 : i === CH.length - 1 ? 1 : c.t0 + (next - c.t0) * 0.02;
-    const target = i === 0 ? 0 : INTRO + tt * (1 - INTRO);
+    const next = i + 1 < CH.length ? CH[i + 1].t0 : T_END;
+    const tt = i === 0 ? 0 : i === CH.length - 1 ? T_END : c.t0 + (next - c.t0) * 0.02;
+    const target = i === 0 ? 0 : INTRO + (tt / T_END) * (1 - INTRO);
     scrollTo({ top: target * max, behavior: 'smooth' });
   });
   rail.appendChild(b);
@@ -652,31 +730,47 @@ function showChapter(i) {
   animate(panel.specs.children, { opacity: [0, 1], translateX: [-6, 0], duration: 420, delay: stagger(35, { start: 220 }), ease: 'outQuart' });
 }
 
+// shared tail of every route: from the transfer nip to the top tray
+function zoneFromNip(M, h) {
+  if (h < M.nip + 0.4) return '2ND TRANSFER';
+  if (h < M.fuser - 0.6) return 'TRANSPORT';
+  if (h < M.exit) return 'FUSER';
+  if (h < M.decurl - 0.3) return 'COOLING';
+  if (h < M.sensor - 0.1) return 'DECURLER';
+  if (h < M.finEntry) return 'INLINE SENSOR';
+  if (h < M.finExit) return 'FINISHER';
+  return 'OUTPUT TRAY';
+}
+
 function zoneOf(st) {
-  st.path.sample(st.head, q);
+  const { path, head } = st.act;
+  path.sample(head, q);
   const [x, y] = q;
+  if (st.long) {
+    if (x < 7) return 'UPPER TRAY FEED';
+    if (head <= P3.marks.reg + 0.02) return x < 8.8 ? 'ENGINE ENTRY' : 'REGISTRATION';
+    return zoneFromNip(P3.marks, head);
+  }
   if (st.pass === 0) {
     if (x < 7) return 'HCF FEED';
-    if (st.head <= P1.marks.reg + 0.02) return x < 8.8 ? 'ENGINE ENTRY' : 'REGISTRATION';
-    if (st.head < P1.marks.nip + 0.4) return '2ND TRANSFER';
-    if (st.head < P1.marks.fuser - 0.6) return 'TRANSPORT';
-    if (st.head < P1.marks.div) return 'FUSER';
+    if (head <= P1.marks.reg + 0.02) return x < 8.8 ? 'ENGINE ENTRY' : 'REGISTRATION';
+    if (head < P1.marks.nip + 0.4) return '2ND TRANSFER';
+    if (head < P1.marks.fuser - 0.6) return 'TRANSPORT';
+    if (head < P1.marks.div) return 'FUSER';
     return 'INVERTER';
   }
   if (x > 19.9 && y < 4.4) return 'INVERTER';
   if (y < 5.3 && x > 7.5) return 'DUPLEX RETURN';
-  if (st.head <= P2.marks.reg + 0.02) return 'REGISTRATION';
-  if (st.head < P2.marks.nip + 0.4) return '2ND TRANSFER';
-  if (st.head < P2.marks.fuser - 0.6) return 'TRANSPORT';
-  if (st.head < P2.marks.exit) return 'FUSER';
-  if (st.head < P2.marks.decurl - 0.3) return 'COOLING';
-  if (st.head < P2.marks.sensor - 0.1) return 'DECURLER';
-  if (st.head < P2.marks.finEntry) return 'INLINE SENSOR';
-  if (st.head < P2.marks.finExit) return 'FINISHER';
-  return 'OUTPUT TRAY';
+  if (head <= P2.marks.reg + 0.02) return 'REGISTRATION';
+  return zoneFromNip(P2.marks, head);
 }
 
 function tonerOf(st) {
+  if (st.long) {
+    if (st.DL < P3.marks.nip) return st.m - mStart3 > cFirst ? 'ON BELT' : 'NONE';
+    if (st.DL - L_LONG < P3.marks.fuser) return 'A · POWDER';
+    return 'A · FUSED';
+  }
   if (st.pass === 0) {
     if (st.head < P1.marks.nip) return st.m - mStart1 > cFirst ? 'ON BELT' : 'NONE';
     if (st.head - L < P1.marks.fuser) return 'A · POWDER';
@@ -690,8 +784,8 @@ function tonerOf(st) {
 let lastRO = '';
 function updateHUD(st) {
   showChapter(st.ch);
-  const travelled = Math.max(0, st.D - L) * MM;
-  const side = st.pass === 0 ? '1 · SIDE A' : '2 · SIDE B';
+  const travelled = st.long ? (st.DL - DL0) * MM : Math.max(0, st.D - L) * MM;
+  const side = st.long ? '1 · SIMPLEX' : st.pass === 0 ? '1 · SIDE A' : '2 · SIDE B';
   const zone = zoneOf(st), toner = tonerOf(st);
   const key = `${travelled.toFixed(0)}|${zone}|${side}|${toner}`;
   if (key !== lastRO) {
@@ -753,8 +847,15 @@ const LABELS = [
   { t: 'INLINE SENSOR', s: 'colour + registration', at: [24.45, 6.75, 1.6], d: [50, -50], ch: [9] },
 
   { t: 'EXIT ROLLS', at: [31.7, 8.7, 1.35], d: [-40, -50], ch: [10] },
-  { t: 'STAPLERS', at: [27.5, 7.5, 1.7], d: [-50, 40], ch: [10] },
   { t: 'BOOKLET MAKER', at: [29.4, 3.1, 1.3], d: [50, 40], ch: [10] },
+
+  { t: 'LONG-SHEET EXTENSION', at: [-1.6, FEED_Y_UPPER - 0.06, 1.3], d: [-40, 50], ch: [12] },
+  { t: 'UPPER TRAY', s: 'long sheets', at: [1.4, FEED_Y_UPPER - 0.9, 1.05], d: [-50, 60], ch: [12] },
+  { t: 'VACUUM FEED BELT', at: [3.9, 7.79, 0.95], d: [-20, -64], ch: [12] },
+  { t: 'IMAGE ON BELT', s: '660 mm long', at: [beltTopMid.x, beltTopMid.beltY, 1.3], d: [30, -70], ch: [13] },
+  { t: 'DIVERTER GATE', s: 'up: straight through', at: [19.8, PAPER_Y, 1.35], d: [60, -44], ch: [13] },
+  { t: 'TRAY EXTENSION', at: [outTray.x + 3.2, outTray.y + 0.1, 1.3], d: [40, 50], ch: [14] },
+  { t: 'EXIT ROLLS', at: [31.7, 8.7, 1.35], d: [30, -60], ch: [14] },
 ];
 
 const svgNS = 'http://www.w3.org/2000/svg';
@@ -824,12 +925,13 @@ mm.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   add('polyline', { points: belt.loop.pts.map((p) => p.join(',')).join(' '), class: 'mm-belt' });
   mm.trail1 = add('polyline', { points: '', class: 'mm-trail' });
   mm.trail2 = add('polyline', { points: '', class: 'mm-trail2' });
+  mm.trail3 = add('polyline', { points: '', class: 'mm-trail' });
   mm.sheet = add('polyline', { points: '', class: 'mm-sheet' });
   mm.appendChild(g);
 }
 let mmKey = '';
 function updateMinimap(st) {
-  const key = st.D.toFixed(2);
+  const key = st.D.toFixed(2) + '|' + st.DL.toFixed(2);
   if (key === mmKey) return;
   mmKey = key;
   const pts = (path, s1) => {
@@ -839,11 +941,13 @@ function updateMinimap(st) {
     arr.push(q[0].toFixed(2) + ',' + q[1].toFixed(2));
     return arr.join(' ');
   };
-  mm.trail1.setAttribute('points', pts(P1, st.pass === 0 ? st.head : P1.total));
-  mm.trail2.setAttribute('points', st.pass === 1 ? pts(P2, st.head) : '');
+  mm.trail1.setAttribute('points', st.long ? '' : pts(P1, st.pass === 0 ? st.head : P1.total));
+  mm.trail2.setAttribute('points', !st.long && st.pass === 1 ? pts(P2, st.head) : '');
+  mm.trail3.setAttribute('points', st.long ? pts(P3, st.DL) : '');
+  const { path, head, len } = st.act;
   const sp = [];
-  for (let i = 0; i <= 12; i++) {
-    st.path.sample(st.head - (i / 12) * L, q);
+  for (let i = 0; i <= 24; i++) {
+    path.sample(head - (i / 24) * len, q);
     sp.push(q[0].toFixed(2) + ',' + q[1].toFixed(2));
   }
   mm.sheet.setAttribute('points', sp.join(' '));
@@ -861,10 +965,12 @@ function applyTheme(name) {
   railMatBase.color.set(pal.rail);
   trailMat.color.set(pal.trail);
   trailMat2.color.set(pal.trail2);
-  outline.material.color.set(pal.outline);
-  sheetMat.uniforms.uPaper.value.set(pal.paper);
-  sheetMat.uniforms.uGrid.value.set(pal.paperGrid);
-  sheetMat.uniforms.uGain.value = pal.paperGain;
+  for (const sh of sheets) {
+    sh.outline.material.color.set(pal.outline);
+    sh.mat.uniforms.uPaper.value.set(pal.paper);
+    sh.mat.uniforms.uGrid.value.set(pal.paperGrid);
+    sh.mat.uniforms.uGain.value = pal.paperGain;
+  }
   fuserBase.set(pal.fuser);
   for (const l of LABELS) {
     if (!l.station) continue;
@@ -918,9 +1024,9 @@ function frame(now) {
   tView += (target - tView) * (1 - Math.exp(-dt * 6));
   if (Math.abs(target - tView) < 1e-5) tView = target;
 
-  const st = computeState(clamp((tView - INTRO) / (1 - INTRO)));
+  const st = computeState(clamp((tView - INTRO) / (1 - INTRO)) * T_END);
   updateReveal(tView / INTRO);
-  updateSheet(st);
+  updateSheets(st);
   updateBeltImages(st);
   // solids hide the belt while toner is laid down (both the front image and
   // the back-side build during the duplex trip), so fade them out then

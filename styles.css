@@ -56,7 +56,7 @@ html, body {
 }
 body { overflow-x: hidden; transition: background-color .3s; }
 
-#track { height: 1650vh; }
+#track { height: 2100vh; }
 
 #gl {
   position: fixed;

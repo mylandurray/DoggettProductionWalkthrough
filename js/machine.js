@@ -36,40 +36,15 @@ export const DECK_Y = 11.2;   // underside of the engine's dark top deck
 export const FEED_Y = 3.38;
 export const FEED_DY = FEED_Y - 7.2;
 export const FEED_Y_UPPER = 7.2;
+export const L_LONG = 6.6;    // long sheet (660 mm), fed from the upper tray after the main story
 
 // ---------------------------------------------------------------- paths
 export function buildPaths() {
-  const P1 = new PathBuilder(0.8, FEED_Y, 0)
-    .toX(5.9)
-    .arc(0.5, 90)
-    .toY(8.1)
-    .arc(0.5, -90)
-    .toX(7.6)
-    .arc(0.5, -90)
-    .toY(6.1)
-    .arc(0.5, 90)
-    .toX(9.3).mark('reg')
-    .toX(10.2).mark('nip')
-    .toX(18.75).mark('fuser')
-    .toX(19.7).mark('div')
-    .arc(0.7, -90)
-    .toY(1.0)
-    .build();
-
-  // Upper-tray feed: joins P1's vertical riser. Shown as an idle alternate.
-  const P0 = new PathBuilder(0.8, FEED_Y_UPPER, 0)
-    .toX(5.9)
-    .arc(0.5, 90)
-    .build();
-
-  const P2 = new PathBuilder(20.4, 1.0, 90)
-    .toY(4.0)
-    .arc(0.35, 90)
-    .toX(8.3)
-    .arc(0.625, -180)
-    .toX(9.3).mark('reg')
-    .toX(10.2).mark('nip')
-    .toX(18.75).mark('fuser')
+  // shared legs: tray takeaway + riser into the engine, the transfer / fuser
+  // run, and the straight-through delivery to the finisher's top tray
+  const riser = (b) => b.toX(5.9).arc(0.5, 90).toY(8.1).arc(0.5, -90).toX(7.6).arc(0.5, -90).toY(6.1).arc(0.5, 90);
+  const engine = (b) => b.toX(9.3).mark('reg').toX(10.2).mark('nip').toX(18.75).mark('fuser');
+  const delivery = (b) => b
     .toX(21.5).mark('exit')
     .toX(22.5).mark('cool')
     .toX(23.7).mark('decurl')
@@ -82,10 +57,30 @@ export function buildPaths() {
     .toX(31.7).mark('exitRoll')
     .toX(32.1).mark('finExit')
     .arc(1.0, 8)
-    .line(3.1)
+    .line(3.1);
+
+  const P1 = engine(riser(new PathBuilder(0.8, FEED_Y, 0)))
+    .toX(19.7).mark('div')
+    .arc(0.7, -90)
+    .toY(1.0)
     .build();
 
-  return { P0, P1, P2 };
+  // Upper-tray feed: joins P1's vertical riser (idle rail in the main story).
+  const P0 = new PathBuilder(0.8, FEED_Y_UPPER, 0)
+    .toX(5.9)
+    .arc(0.5, 90)
+    .build();
+
+  const P2 = delivery(engine(new PathBuilder(20.4, 1.0, 90)
+    .toY(4.0)
+    .arc(0.35, 90)
+    .toX(8.3)
+    .arc(0.625, -180))).build();
+
+  // Long sheet, simplex: upper tray, through the engine, straight out.
+  const P3 = delivery(engine(riser(new PathBuilder(0.8, FEED_Y_UPPER, 0)))).build();
+
+  return { P0, P1, P2, P3 };
 }
 
 // ---------------------------------------------------------------- helpers
@@ -195,7 +190,7 @@ function rollerObj(r, len, mat, solidMat) {
 
 // ---------------------------------------------------------------- build
 export function createPress(scene, pal = PALETTES.light) {
-  const { P0, P1, P2 } = buildPaths();
+  const { P0, P1, P2, P3 } = buildPaths();
   const root = new THREE.Group();
   scene.add(root);
 
@@ -252,6 +247,7 @@ export function createPress(scene, pal = PALETTES.light) {
     deck = new Batch();
 
   const rotors = [];
+  const feedExt = new THREE.Group();
   const addRotor = (x, y, r, len, { mat = mats.mech, src = 'D', sign = 1, parent = root } = {}) => {
     const o = rollerObj(r, len, mat, sm(solidKeyOf(mat)));
     o.position.set(x, y, 0);
@@ -467,6 +463,21 @@ export function createPress(scene, pal = PALETTES.light) {
     guides(P0, 4.3, P0.total);
     pairAt(P0, P0.nearest(5.5, FEED_Y_UPPER), 0.13);
     pairAt(P1, P1.nearest(6.95, 8.6), 0.13);
+
+    // long-sheet extension behind the upper tray: slides out of the back
+    // wall to carry a long sheet's overhang (retracted + hidden until used)
+    const eb = new Batch(), ey = FEED_Y_UPPER - 0.06;
+    eb.rectY(-3.3, -1.3, 0.3, 1.3, ey);
+    eb.rectX(-3.3, ey, -1.3, ey + 0.2, 1.3);
+    for (const zz of [-1.2, 1.2]) eb.seg(-2.9, ey, zz, -0.05, ey - 1.1, zz);
+    for (const zz of [-(W / 2 + 0.1), W / 2 + 0.1]) eb.rectZ(-2.4, ey, -0.6, ey + 0.16, zz);
+    feedExt.add(eb.build(mats.mech));
+    const ef = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.6).rotateX(-Math.PI / 2), fillMat);
+    ef.position.set(-1.5, ey - 0.005, 0);
+    ef.renderOrder = -1;
+    feedExt.add(ef);
+    feedExt.visible = false;
+    root.add(feedExt);
   }
 
   // ============================================================ ENGINE
@@ -799,12 +810,10 @@ export function createPress(scene, pal = PALETTES.light) {
     pairAt(P2, P2.nearest(28.9, 8.5), 0.14);
     pairAt(P2, P2.marks.exitRoll, 0.18, 2.7);
 
-    // compiler tray + staplers
+    // compiler tray
     for (const zz of [-1.5, 1.5]) mechDim.seg(27.6, 7.4, zz, 31.3, 6.2, zz);
     mechDim.poly([[27.6, 7.4, -1.5], [27.6, 7.4, 1.5]]);
     mechDim.poly([[31.3, 6.2, -1.5], [31.3, 6.2, 1.5]]);
-    mech.box(27.25, 6.85, -1.7, 27.75, 7.5, -1.0);
-    mech.box(27.25, 6.85, 1.0, 27.75, 7.5, 1.7);
     // punch unit
     mech.box(27.8, 8.8, -1.6, 28.4, 9.3, 1.6);
     // booklet maker
@@ -827,8 +836,25 @@ export function createPress(scene, pal = PALETTES.light) {
     const tb = new Batch();
     tb.rectY(-L / 2 - 0.35, -1.45, L / 2 + 0.25, 1.45, -0.34);
     tb.rectY(-L / 2 - 0.35, -1.45, L / 2 + 0.25, 1.45, -0.44);
-    tb.rectX(L / 2 + 0.25, -0.44, -1.2, 0.05, 1.2);
     tray.add(tb.build(mats.mech));
+    // end stop on its own hinge so it can fold flat for a long sheet
+    const stop = new THREE.Group();
+    stop.position.set(L / 2 + 0.25, -0.44, 0);
+    const stb = new Batch();
+    stb.rectX(0, 0, -1.2, 0.49, 1.2);
+    stop.add(stb.build(mats.mech));
+    tray.add(stop);
+    // pull-out extension for long sheets (retracted + hidden until used)
+    const ext = new THREE.Group();
+    const xb = new Batch(), e0 = L / 2 + 0.1, e1 = e0 + 3.6;
+    xb.rectY(e0, -1.3, e1, 1.3, -0.38);
+    xb.rectX(e1, -0.38, -1.1, -0.2, 1.1);
+    ext.add(xb.build(mats.mech));
+    ext.visible = false;
+    tray.add(ext);
+    out.stop = stop;
+    out.ext = ext;
+    out.extLen = 3.6;
     const sb = new Batch();
     sb.box(-L / 2, -0.33, -W / 2, L / 2, -0.03, W / 2);
     for (let y = -0.23; y < -0.03; y += 0.1) sb.seg(-L / 2, y, W / 2, L / 2, y, W / 2);
@@ -903,6 +929,6 @@ export function createPress(scene, pal = PALETTES.light) {
   }
 
   return {
-    setTheme, setSolid, root, P0, P1, P2, mats, rotors, doors, deckMeshes, belt, lasers, polygonMirror, diverter, fan, sensorMat, air, nAir, out,
+    setTheme, setSolid, root, P0, P1, P2, P3, feedExt, mats, rotors, doors, deckMeshes, belt, lasers, polygonMirror, diverter, fan, sensorMat, air, nAir, out,
   };
 }
