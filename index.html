@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How It's Done · Doggett Group</title>
+  <meta name="description" content="How it's done: follow one sheet through a production digital press, from feeder to finished stack." />
+  <script>
+    // set the theme before first paint (default light)
+    try { document.documentElement.dataset.theme = localStorage.getItem('dg-theme') === 'dark' ? 'dark' : 'light'; }
+    catch (e) { document.documentElement.dataset.theme = 'light'; }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+        "animejs": "https://cdn.jsdelivr.net/npm/animejs@4.5.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <svg id="leaders" aria-hidden="true"></svg>
+  <div id="labels" aria-hidden="true"></div>
+
+  <header class="brandbar">
+    <a class="brand" href="#" aria-label="Doggett Group, back to top">
+      <img src="assets/doggett-logo.png" alt="Doggett Group Creative Communications" width="570" height="264" />
+    </a>
+    <div class="bb-title">
+      <span class="bb-kicker">How it&rsquo;s done</span>
+      <span class="bb-name">The journey of a printed sheet</span>
+    </div>
+    <div class="bb-actions">
+    <button class="solid-toggle" type="button" aria-pressed="false" title="Show internal parts as solids">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="cube-edge" d="M12 2.8 20 7.2v9.6L12 21.2 4 16.8V7.2z M4 7.2l8 4.4 8-4.4 M12 11.6v9.6"/><path class="cube-face" d="M12 11.6 20 7.2v9.6L12 21.2z"/></svg>
+      <span>Solid parts</span>
+    </button>
+    <button class="theme-toggle" type="button" aria-label="Switch to dark mode">
+      <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/></svg>
+      <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+    </button>
+    </div>
+    <div class="progress" aria-hidden="true"><i></i></div>
+  </header>
+
+  <aside class="panel" aria-live="polite">
+    <div class="ch-head"><span class="ch-num">00</span><span class="ch-kicker"></span></div>
+    <h1 class="ch-title"></h1>
+    <p class="ch-body"></p>
+    <dl class="ch-specs"></dl>
+  </aside>
+
+  <div class="readout">
+    <div class="ro-row"><span>SHEET</span><b id="ro-pos">0.0</b><i>mm</i></div>
+    <div class="ro-row"><span>ZONE</span><b id="ro-zone">—</b></div>
+    <div class="ro-row"><span>PASS</span><b id="ro-side">1 · SIDE A</b></div>
+    <div class="ro-row"><span>TONER</span><b id="ro-toner">—</b></div>
+  </div>
+
+  <nav class="rail" aria-label="Chapters"></nav>
+
+  <div class="minimap" aria-hidden="true">
+    <div class="mm-cap">SIDE ELEVATION · PAPER PATH</div>
+    <svg id="minimap"></svg>
+  </div>
+
+  <div class="scroll-hint"><span>Scroll</span><i></i></div>
+
+  <div id="track"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
