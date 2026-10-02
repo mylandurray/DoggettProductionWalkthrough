@@ -121,7 +121,8 @@ export function createCameraRig(camera, { CH, CAMS, tEnd }) {
 }
 
 // ------------------------------------------------------------------ callouts
-// Each label: { t, s?, cls?, at: [x,y,z] | () => [x,y,z], d: [dx,dy] px, ch: [chapter indices] }.
+// Each label: { t, s?, cls?, at: [x,y,z] | () => [x,y,z] | null, d: [dx,dy] px, ch: [chapter indices] }.
+// An `at` function may return null to hide the label for now.
 export function createLabels(LABELS, camera) {
   const svgNS = 'http://www.w3.org/2000/svg';
   const leaders = $('#leaders');
@@ -145,8 +146,12 @@ export function createLabels(LABELS, camera) {
     const w = innerWidth, h = innerHeight;
     const small = w < 760;
     for (const l of LABELS) {
-      const on = l.ch.includes(ch) && !(small && l.s === undefined && l.cls === 'dim');
-      if (on && typeof l.at === 'function') l.v.set(...l.at());
+      let on = l.ch.includes(ch) && !(small && l.s === undefined && l.cls === 'dim');
+      if (on && typeof l.at === 'function') {
+        const p = l.at();
+        if (p) l.v.set(...p);
+        else on = false;
+      }
       pv.copy(l.v).project(camera);
       const vis = on && pv.z < 1 && Math.abs(pv.x) < 1.2 && Math.abs(pv.y) < 1.2;
       l.el.classList.toggle('on', vis);
