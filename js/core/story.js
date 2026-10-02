@@ -42,24 +42,34 @@ export function createChapters({ CH, tEnd, intro }) {
   });
   const railBtns = [...rail.children];
 
-  // Jump to the start of chapter i. While the smooth scroll is in flight the
+  // Jump to the start of chapter i with an eased scroll slow enough to watch
+  // the machine move (longer jumps take longer, up to 3 s). While it runs the
   // panel still shows the old chapter, so `pending` lets repeated arrow clicks
-  // step on from the chapter already requested.
-  let pending = null, pendingTimer = 0;
+  // step on from the chapter already requested. Wheel / touch cancels it.
+  let pending = null, tween = 0;
   function go(i) {
     i = Math.max(0, Math.min(CH.length - 1, i));
     const max = document.documentElement.scrollHeight - innerHeight;
     const next = i + 1 < CH.length ? CH[i + 1].t0 : tEnd;
     const tt = i === 0 ? 0 : i === CH.length - 1 ? tEnd : CH[i].t0 + (next - CH[i].t0) * 0.02;
+    const from = scrollY, to = scrollToStory(tt, intro, tEnd) * max;
+    const dur = clamp(0.8 + (Math.abs(to - from) / max) * 14, 0.8, 3) * 1000;
     pending = i;
-    clearTimeout(pendingTimer);
-    pendingTimer = setTimeout(() => (pending = null), 1500);
     syncNav();
-    scrollTo({ top: scrollToStory(tt, intro, tEnd) * max, behavior: 'smooth' });
+    cancelAnimationFrame(tween);
+    const start = performance.now();
+    const step = (now) => {
+      const k = clamp((now - start) / dur);
+      scrollTo(0, lerp(from, to, ease(k)));
+      if (k < 1) tween = requestAnimationFrame(step);
+      else pending = null;
+    };
+    tween = requestAnimationFrame(step);
   }
   const cur = () => pending ?? shown;
-  addEventListener('scrollend', () => (pending = null));
-  for (const ev of ['wheel', 'touchstart']) addEventListener(ev, () => (pending = null), { passive: true });
+  const cancel = () => { cancelAnimationFrame(tween); pending = null; };
+  for (const ev of ['wheel', 'touchstart']) addEventListener(ev, cancel, { passive: true });
+  $('.play-toggle').addEventListener('click', cancel);
 
   const prevBtn = $('.ch-prev'), nextBtn = $('.ch-next');
   function syncNav() {
