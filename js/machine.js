@@ -44,7 +44,7 @@ export function buildPaths() {
   // run, and the straight-through delivery to the finisher's top tray
   const riser = (b) => b.toX(5.9).arc(0.5, 90).toY(8.1).arc(0.5, -90).toX(7.6).arc(0.5, -90).toY(6.1).arc(0.5, 90);
   const engine = (b) => b.toX(9.3).mark('reg').toX(10.2).mark('nip').toX(18.75).mark('fuser');
-  const delivery = (b) => b
+  const finTop = (b) => b
     .toX(21.5).mark('exit')
     .toX(22.5).mark('cool')
     .toX(23.7).mark('decurl')
@@ -53,7 +53,8 @@ export function buildPaths() {
     .toX(26.1)
     .arc(0.6, 90)
     .toY(7.9)
-    .arc(0.6, -90)
+    .arc(0.6, -90);
+  const delivery = (b) => finTop(b)
     .toX(31.7).mark('exitRoll')
     .toX(32.1).mark('finExit')
     .arc(1.0, 8)
@@ -80,12 +81,27 @@ export function buildPaths() {
   // Long sheet, simplex: upper tray, through the engine, straight out.
   const P3 = delivery(engine(riser(new PathBuilder(0.8, FEED_Y_UPPER, 0)))).build();
 
-  return { P0, P1, P2, P3 };
+  // Production run, pass 2: as P2, but a gate on the finisher's top run drops
+  // the sheet into the stacker, where it lands on the elevator tray.
+  const P4 = finTop(engine(new PathBuilder(20.4, 1.0, 90)
+    .toY(4.0)
+    .arc(0.35, 90)
+    .toX(8.3)
+    .arc(0.625, -180)))
+    .toX(27.5).mark('stkGate')
+    .arc(0.5, -90)
+    .toY(7.0)
+    .arc(0.5, 90)
+    .toX(28.6).mark('stkExit')
+    .line(L + 0.06)
+    .build();
+
+  return { P0, P1, P2, P3, P4 };
 }
 
 // ---------------------------------------------------------------- build
 export function createPress(scene, pal = PALETTES.light) {
-  const { P0, P1, P2, P3 } = buildPaths();
+  const { P0, P1, P2, P3, P4 } = buildPaths();
   const root = new THREE.Group();
   scene.add(root);
 
@@ -663,7 +679,7 @@ export function createPress(scene, pal = PALETTES.light) {
     const z = 3.6, f = z + 0.01;
     const y1 = MODULES[3].y1;
     shellBox(25, 0.4, -z, 32.1, y1, z);
-    plinth(25, 32.1, z);
+    plinth(25, 28.3, z); // open bay on the right for the stacker trolley
     // left service door, right-hand stack window under an upper panel
     door(25.3, 0.6, 27.9, 9.4, f, 'right');
     door(28.0, 6.95, 31.8, 9.4, f, 'bottom', 'R');
@@ -705,20 +721,72 @@ export function createPress(scene, pal = PALETTES.light) {
     pairAt(P2, P2.nearest(28.9, 8.5), 0.14);
     pairAt(P2, P2.marks.exitRoll, 0.18, 2.7);
 
-    // compiler tray
-    for (const zz of [-1.5, 1.5]) mechDim.seg(27.6, 7.4, zz, 31.3, 6.2, zz);
-    mechDim.poly([[27.6, 7.4, -1.5], [27.6, 7.4, 1.5]]);
-    mechDim.poly([[31.3, 6.2, -1.5], [31.3, 6.2, 1.5]]);
     // punch unit
     mech.box(27.8, 8.8, -1.6, 28.4, 9.3, 1.6);
-    // booklet maker
-    addRotor(29.4, 3.35, 0.24, 2.6);
-    addRotor(29.4, 2.85, 0.24, 2.6, { sign: -1 });
-    mechDim.seg(28.6, 3.1, 0, 29.1, 3.1, 0);
-    mechDim.box(27.6, 3.0, -1.2, 28.6, 3.2, 1.2);
-    for (const zz of [-1.4, 1.4]) mechDim.seg(29.9, 4.9, zz, 29.5, 3.6, zz);
-    mechDim.rectY(26.0, -1.6, 31.6, 1.6, 1.2);
-    stack.box(26.4, 1.22, -W / 2, 26.4 + L, 1.5, W / 2);
+
+    // high-capacity stacker behind the window: a gate on the top run drops
+    // sheets to the stacker exit rolls; they land on an elevator tray that
+    // starts high and steps down as the stack grows, then lowers right down
+    // onto a trolley that is wheeled out of the front
+    const sy = P4.sample(P4.marks.stkExit, q)[1];
+    guides(P4, P4.marks.stkGate + 0.15, P4.marks.stkExit - 0.3, 0.15);
+    pairAt(P4, P4.marks.stkExit - 0.15, 0.14);
+    // gate flap where the stacker route leaves the top run
+    mech.seg(27.45, 8.5, -1.3, 27.45, 8.5, 1.3);
+    // trailing-edge wall under the exit rolls + elevator posts at the back
+    mechDim.rectX(28.5, sy - 0.75, -1.3, sy - 0.12, 1.3);
+    for (const x of [28.9, 31.3]) mechDim.box(x - 0.06, 0.6, -1.86, x + 0.06, sy, -1.74);
+    const stk = {};
+    const SX0 = 28.5, SX1 = 31.8;
+    {
+      // carriage: rides up and down the posts, arms reaching under the tray
+      const g = new THREE.Group(), b = new Batch();
+      for (const x of [28.9, 31.3]) b.box(x - 0.05, -0.08, -1.74, x + 0.05, 0, 1.0);
+      b.seg(28.9, -0.04, -1.74, 31.3, -0.04, -1.74);
+      g.add(b.build(mats.mech, sm('sMech')));
+      root.add(g);
+      stk.carriage = g;
+    }
+    {
+      // tray plate: its top is at the group's y
+      const g = new THREE.Group(), b = new Batch();
+      b.box(SX0, -0.06, -1.35, SX1, 0, 1.35);
+      g.add(b.build(mats.mech, sm('sMech')));
+      root.add(g);
+      stk.plate = g;
+    }
+    {
+      // trolley: deck on four castors with a push handle at the front
+      const g = new THREE.Group(), b = new Batch();
+      const top = 0.86;
+      b.box(SX0 - 0.1, top - 0.1, -1.5, SX1 + 0.1, top, 1.5);
+      for (const x of [SX0 + 0.15, SX1 - 0.15]) for (const z of [-1.3, 1.3]) {
+        b.seg(x, top - 0.1, z, x, 0.34, z);
+        const n = 10;
+        for (let k = 0; k < n; k++) {
+          const a0 = (k / n) * Math.PI * 2, a1 = ((k + 1) / n) * Math.PI * 2;
+          b.seg(x + 0.16 * Math.cos(a0), 0.17 + 0.16 * Math.sin(a0), z, x + 0.16 * Math.cos(a1), 0.17 + 0.16 * Math.sin(a1), z);
+        }
+      }
+      for (const x of [SX0 + 0.2, SX1 - 0.2]) b.seg(x, top, 1.5, x, 2.1, 1.75);
+      b.seg(SX0 + 0.2, 2.1, 1.75, SX1 - 0.2, 2.1, 1.75);
+      g.add(b.build(mats.mech, sm('sMech')));
+      root.add(g);
+      stk.cart = g;
+      stk.low = top + 0.06; // tray top when it sits on the trolley
+    }
+    // side joggers, fixed at the top of the stack
+    stk.joggers = [-1, 1].map((side) => {
+      const g = new THREE.Group(), b = new Batch();
+      b.rectZ(28.95, sy - 0.5, 31.2, sy - 0.04, 0);
+      b.seg(28.95, sy - 0.12, 0, 31.2, sy - 0.12, 0);
+      g.add(b.build(mats.mech));
+      g.userData.side = side;
+      root.add(g);
+      return g;
+    });
+    stk.y = sy;
+    out.stk = stk;
 
     // output tray
     const e = P2.total;
@@ -755,27 +823,6 @@ export function createPress(scene, pal = PALETTES.light) {
     for (let y = -0.23; y < -0.03; y += 0.1) sb.seg(-L / 2, y, W / 2, L / 2, y, W / 2);
     tray.add(sb.build(mats.stack, sm('sPaper')));
     out.tray = tray;
-    // stacker: the tray steps down along its normal as the stack grows, so
-    // the top sheet stays level with the exit; side joggers (fixed to the
-    // finisher, not the tray) tap each new sheet square
-    out.trayBase = tray.position.clone();
-    out.trayNormal = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
-    const jg = new THREE.Group();
-    jg.position.copy(tray.position);
-    jg.rotation.z = ang;
-    root.add(jg);
-    out.joggers = [-1, 1].map((sz) => {
-      const p = new THREE.Group();
-      const pb = new Batch();
-      pb.rectZ(-L / 2 + 0.35, -0.28, L / 2 - 0.45, 0.22, 0);
-      pb.seg(-L / 2 + 0.35, -0.03, 0, L / 2 - 0.45, -0.03, 0);
-      // arm back to the finisher wall
-      pb.seg(-L / 2 + 0.35, 0.22, 0, -L / 2 + 0.05, 0.22, 0);
-      p.add(pb.build(mats.mech));
-      p.userData.side = sz;
-      jg.add(p);
-      return p;
-    });
   }
 
   // ============================================================ assemble
@@ -845,6 +892,6 @@ export function createPress(scene, pal = PALETTES.light) {
   }
 
   return {
-    setTheme, setSolid, root, P0, P1, P2, P3, feedExt, mats, rotors, doors, deckMeshes, belt, lasers, polygonMirror, diverter, fan, sensorMat, air, nAir, out,
+    setTheme, setSolid, root, P0, P1, P2, P3, P4, feedExt, mats, rotors, doors, deckMeshes, belt, lasers, polygonMirror, diverter, fan, sensorMat, air, nAir, out,
   };
 }

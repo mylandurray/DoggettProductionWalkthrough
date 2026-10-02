@@ -14,7 +14,7 @@ const { renderer, scene, camera, composer, bloom } = createStage(pal);
 
 // ------------------------------------------------------------------ model
 const press = createPress(scene, pal);
-const { P0, P1, P2, P3, belt } = press;
+const { P0, P1, P2, P3, P4, belt } = press;
 
 await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]);
 const tex = makePrintTextures();
@@ -79,8 +79,11 @@ function beltTravel(t, D) {
 const RUN_N = 6, LOOP_SLOTS = 5, INV_PAUSE = 1.3;
 const SLOT = (K2.reg - K1.reg + INV_PAUSE) / LOOP_SLOTS;
 const FEED = K1.reg - L; // tray → registration
-const RUN_LEN = 2 * (RUN_N - 1) * SLOT + K2.end - L + INV_PAUSE; // last sheet lands
-const T_RUN0 = 1.32, T_RUN1 = 1.84, T_END = 1.86;
+const RUN_END = off2 + P4.total; // pass 2 runs into the stacker (P4)
+const RUN_LEN = 2 * (RUN_N - 1) * SLOT + RUN_END - L + INV_PAUSE + 1.2; // last sheet lands + settles
+const T_RUN0 = 1.32, T_RUN1 = 1.84;
+// then the stacker lowers the finished stack onto its trolley, which is wheeled out
+const T_LOWER = T_RUN1 + 0.008, T_CART = T_LOWER + 0.038, T_END = T_CART + 0.05;
 const tOfU = (u) => lerp(T_RUN0, T_RUN1, u / RUN_LEN);
 // leading edge D of a run sheet that has moved s since leaving the tray
 function runD(s) {
@@ -100,7 +103,7 @@ const runInPress = (u) => {
   let n = 0;
   for (let i = 0; i < RUN_N; i++) {
     const s = u - 2 * i * SLOT;
-    if (s > 0 && runD(s) < K2.end) n++;
+    if (s > 0 && runD(s) < RUN_END) n++;
   }
   return n;
 };
@@ -164,8 +167,8 @@ const CH = [
   },
   {
     t0: 0.86, kicker: 'Finishing', title: 'Onto the stack',
-    body: 'Finally the sheet rises to the top of the finisher, and the exit rollers lay it on the stack with the rest of your job. Side joggers tap it square, and the tray steps down so the next sheet lands at the same height. The same unit can also staple, hole-punch or fold booklets.',
-    specs: [['Delivery', 'top tray'], ['Stacking', 'jogged · tray lowers'], ['Options', 'staple · punch · booklet']],
+    body: 'Finally the sheet rises to the top of the finisher, and the exit rollers lay it on the top tray. Here it’s a proof; a long run goes into the high-capacity stacker behind the window instead. The same unit can also staple and hole-punch.',
+    specs: [['Delivery', 'top tray'], ['Long runs', 'stacker · ~5,000 sheets'], ['Options', 'staple · punch']],
   },
   {
     t0: 0.95, kicker: 'Summary', title: 'The whole journey',
@@ -199,8 +202,13 @@ const CH = [
   },
   {
     t0: tOfU(2 * (RUN_N - 1) * SLOT + FEED + 4), kicker: 'Production run', title: 'Emptying the loop',
-    body: 'After the last front is printed, only backs are left to do, so gaps open up as the duplex loop empties. Every sheet still lands on the stack in order, jogged square as the tray steps down beneath it, printed on both sides and ready for finishing.',
+    body: 'After the last front is printed, only backs are left to do, so gaps open up as the duplex loop empties. Instead of the top tray, the run drops down into the stacker: each sheet lands on the elevator tray, joggers tap it square, and the tray steps down so the next sheet falls the same short distance.',
     specs: [['Sheets delivered', `${RUN_N} of ${RUN_N}`], ['Order on the stack', `1 → ${RUN_N}`], ['Sides printed', String(2 * RUN_N)]],
+  },
+  {
+    t0: T_LOWER, kicker: 'Production run', title: 'Wheeled away',
+    body: 'When the job is done, or the stacker is full, the elevator lowers the whole stack onto a trolley. It is wheeled straight out to the guillotine or the bindery, an empty trolley goes in, and the press carries on.',
+    specs: [['Stacker capacity', '~5,000 sheets'], ['Unloading', 'on its trolley'], ['Press', 'keeps running']],
   },
 ];
 const CH_IMAGE = CH.findIndex((c) => c.kicker === 'Building the image');
@@ -227,9 +235,10 @@ for (const [path, mat, rail] of [[P1, trailMat, true], [P2, trailMat2, true], [P
     trails.push({ path, line: tr });
   }
 }
-// idle upper-tray feed path: dashed rail only, never trailed
-for (const z of [-(W / 2 + 0.12), W / 2 + 0.12]) {
-  const base = new THREE.Line(new THREE.BufferGeometry().setFromPoints(P0.pts.map(([x, y]) => new THREE.Vector3(x, y, z))), railMatBase);
+// idle upper-tray feed path and the stacker branch: dashed rail only, never trailed
+const stkBranch = P4.pts.slice(P4.indexAt(P4.marks.stkGate));
+for (const pts of [P0.pts, stkBranch]) for (const z of [-(W / 2 + 0.12), W / 2 + 0.12]) {
+  const base = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(([x, y]) => new THREE.Vector3(x, y, z))), railMatBase);
   base.computeLineDistances();
   scene.add(base);
 }
@@ -421,33 +430,40 @@ function computeState(t) {
     st.roll = ROLL_RUN + U;
     st.runs = runSheets.map((_, i) => {
       const s = U - 2 * i * SLOT;
-      const D = runD(s), pass = D <= P1.total ? 0 : 1;
-      return { s, D, pass, path: pass ? P2 : P1, head: pass ? D - off2 : D, on: s > 0, done: D >= K2.end };
+      const e = runD(s) - RUN_END; // past the resting point in the stacker
+      const D = Math.min(runD(s), RUN_END), pass = D <= P1.total ? 0 : 1;
+      return { s, D, e, pass, path: pass ? P4 : P1, head: pass ? D - off2 : D, on: s > 0, done: e >= 0, stk: stackPhase(e) };
     });
   }
-  // stacker: each sheet lands, the joggers tap it square, then the tray
-  // steps down one sheet so the top of the stack stays level with the exit
-  const a4 = stackPhase(D - K2.end, (t - 0.946) * 80);
-  const rs = st.runs ? st.runs.map((r) => stackPhase(r.D - K2.end)) : [];
-  st.stack = {
-    a4, runs: rs,
-    drop: SH * (a4.settle + rs.reduce((n, p) => n + p.settle, 0)),
-    jog: Math.max(a4.jog, ...rs.map((p) => p.jog)),
-  };
+  st.stk = stackerState(t, st.runs);
   return st;
 }
-const SH = 0.03; // sheet thickness on the stack (exaggerated)
-// e = distance past the resting point (or `after` for the main-story sheet,
-// which stops dead there)
-function stackPhase(e, after = e) {
-  const w = (a, b) => clamp((after - a) / (b - a));
-  return { land: clamp(e + 1), jog: Math.sin(Math.PI * w(0.05, 0.55)), sq: ease(w(0.05, 0.3)), settle: ease(w(0.45, 0.9)) };
+
+// Stacker. Each sheet's tail clears the exit rolls, it drops onto the stack,
+// the joggers tap it square, then the elevator steps down a sheet so the top
+// of the stack stays just under the exit. Before the run the tray is down on
+// its trolley; it is raised to the top, and lowered back onto the trolley at
+// the end, which is then wheeled out of the front.
+const SHS = 0.04, STK_GAP = 0.08, CART_OUT = 6.5; // sheet thickness (exaggerated), drop under the exit
+function stackPhase(e) {
+  const w = (a, b) => clamp((e - a) / (b - a));
+  return { land: ease(w(-0.05, 0.25)), jog: Math.sin(Math.PI * w(0.3, 0.8)), sq: ease(w(0.3, 0.55)), settle: ease(w(0.7, 1.1)) };
+}
+function stackerState(t, runs) {
+  const stk = press.out.stk;
+  const settled = runs ? runs.reduce((n, r) => n + r.stk.settle, 0) : 0;
+  const k = t < T_RUN ? 0 : ease((t - T_RUN) / 0.035) * (1 - ease((t - T_LOWER) / 0.035));
+  const top = stk.y - STK_GAP - SHS * settled;
+  const cy = lerp(stk.low - 0.25, top - 0.06, k); // carriage arms, under the tray
+  const y = Math.max(stk.low, cy + 0.06);
+  const cart = t < T_RUN ? 0 : CART_OUT * ease((t - T_CART) / 0.04);
+  return { y, cy, cart, jog: runs ? Math.max(0, ...runs.map((r) => r.stk.jog)) : 0 };
 }
 
 const q = [0, 0, 0, 0];
 // Lay a sheet of length len along path with its leading edge at head. `lift`
 // raises it off the path (the long sheet lands on top of the A4 one).
-function writeSheet(sh, path, head, len, pass, skew = 0, lift = 0) {
+function writeSheet(sh, path, head, len, pass, skew = 0, lift = 0, dz = 0) {
   const { N, mesh } = sh;
   const pos = mesh.geometry.attributes.position.array;
   const uv = mesh.geometry.attributes.uv.array;
@@ -455,7 +471,7 @@ function writeSheet(sh, path, head, len, pass, skew = 0, lift = 0) {
   const ab = mesh.geometry.attributes.aBack.array;
   const ol = sh.outline.geometry.attributes.position.array;
   const nip = path.marks.nip, fus = path.marks.fuser;
-  const skewA = skew * 0.07, lat = skew * 0.14;
+  const skewA = skew * 0.07, lat = skew * 0.14 + dz;
   for (let i = 0; i <= N; i++) {
     const a = i / N;
     const s = head - a * len;
@@ -488,10 +504,7 @@ function writeSheet(sh, path, head, len, pass, skew = 0, lift = 0) {
 }
 
 function updateSheets(st) {
-  // sheets land a touch off-square (alternately left / right) until jogged
-  const { a4, runs: rs, drop } = st.stack;
-  const off = (p, k) => 0.8 * k * p.land * (1 - p.sq);
-  writeSheet(sheetA4, st.path, st.head, L, st.pass, st.skew + off(a4, 1), (SH - drop) * a4.land);
+  writeSheet(sheetA4, st.path, st.head, L, st.pass, st.skew);
   const vis = st.longA > 0.001;
   sheetLong.mesh.visible = sheetLong.outline.visible = vis;
   if (vis) {
@@ -504,9 +517,11 @@ function updateSheets(st) {
     const on = !!r?.on;
     sh.mesh.visible = sh.outline.visible = on;
     if (!on) return;
-    // settles onto the stack, above the sheets already delivered
-    const p = rs[i];
-    writeSheet(sh, r.path, r.head, L, r.pass, off(p, i % 2 ? 1 : -1), (SH * (i + 2) - drop) * p.land);
+    // drops onto the stack a touch off-square (alternately left / right)
+    // until jogged, then rides the elevator (and the trolley out)
+    const p = r.stk, k = st.stk;
+    const lift = (k.y + SHS * (i + 1) - press.out.stk.y) * p.land;
+    writeSheet(sh, r.path, r.head, L, r.pass, 0.8 * (i % 2 ? 1 : -1) * p.land * (1 - p.sq), lift, k.cart * p.land);
     const a = clamp(r.s / 0.4); // peels off the top of the feeder stack
     sh.mat.uniforms.uAlpha.value = a;
     sh.outline.material.opacity = a;
@@ -650,10 +665,12 @@ function updateMechanics(st, time) {
   press.out.ext.visible = st.outExt > 0.001;
   press.out.stop.rotation.z = (-st.outExt * Math.PI) / 2;
 
-  // stacker tray steps down as the stack grows; joggers close in on each new sheet
-  const o = press.out;
-  o.tray.position.copy(o.trayBase).addScaledVector(o.trayNormal, -st.stack.drop);
-  for (const j of o.joggers) j.position.z = j.userData.side * (W / 2 + lerp(0.22, 0.008, st.stack.jog));
+  // stacker: elevator, tray (rides the trolley once set down), trolley, joggers
+  const so = press.out.stk, k = st.stk;
+  so.carriage.position.y = k.cy;
+  so.plate.position.set(0, k.y, k.cart);
+  so.cart.position.z = k.cart;
+  for (const j of so.joggers) j.position.z = j.userData.side * (W / 2 + lerp(0.22, 0.008, k.jog));
 }
 
 // ------------------------------------------------------------------ intro reveal
@@ -730,7 +747,8 @@ const CAMS = [
   // production run: the whole paper path, the engine and loop, then delivery
   () => ({ p: V(18.5, 12.5, 37), t: V(17.4, 5.4, 0) }),
   () => ({ p: V(13.5, 11.5, 24), t: V(15.2, 5.6, 0) }),
-  () => ({ p: V(38.5, 12.5, 20), t: V(31.5, 7, 0) }),
+  () => ({ p: V(37.5, 10, 17), t: V(29.5, 5.2, 0) }),
+  () => ({ p: V(38, 7.5, 21), t: V(29.5, 2.6, 2.5) }),
 ];
 const rig = createCameraRig(camera, { CH, CAMS, tEnd: T_END });
 function updateCamera(st, dt) {
@@ -844,6 +862,7 @@ function updateHUD(st) {
 
 // ------------------------------------------------------------------ callouts
 const outTray = press.out.tray.position;
+const stkY = press.out.stk.y;
 const beltTopMid = belt.stations.find((s) => s.id === 'M');
 const LABELS = [
   { t: 'HIGH-CAPACITY FEEDER', at: [3.5, MODULES[0].y1, 3.5], d: [-30, -46], ch: [0, 11] },
@@ -892,8 +911,7 @@ const LABELS = [
   { t: 'INLINE SENSOR', s: 'colour + registration', at: [24.45, 6.75, 1.6], d: [50, -50], ch: [9] },
 
   { t: 'EXIT ROLLS', at: [31.7, 8.7, 1.35], d: [-40, -50], ch: [10] },
-  { t: 'BOOKLET MAKER', at: [29.4, 3.1, 1.3], d: [50, 40], ch: [10] },
-  { t: 'JOGGERS', s: 'square each sheet', at: [outTray.x + 0.4, outTray.y + 0.2, W / 2 + 0.1], d: [-10, -70], ch: [10, 17] },
+  { t: 'STACKER', s: 'for long runs', at: [30.1, 3.4, 1.4], d: [50, 40], ch: [10] },
 
   { t: 'LONG-SHEET EXTENSION', at: [-1.6, FEED_Y_UPPER - 0.06, 1.3], d: [-40, 50], ch: [12] },
   { t: 'UPPER TRAY', s: 'long sheets', at: [1.4, FEED_Y_UPPER - 0.9, 1.05], d: [-50, 60], ch: [12] },
@@ -914,7 +932,11 @@ const LABELS = [
     },
   })),
   { t: 'DUPLEX LOOP', s: 'backs on their way round', at: [14.5, 4.35, 1.3], d: [10, 60], ch: [16] },
-  { t: 'FINISHED STACK', s: 'in run order', at: [outTray.x + 1, outTray.y - 0.2, 1.4], d: [-30, 70], ch: [17] },
+  { t: 'STACKER GATE', at: [27.5, 8.5, 1.35], d: [-50, -50], ch: [17] },
+  { t: 'JOGGERS', s: 'square each sheet', at: [30.1, stkY - 0.3, W / 2 + 0.22], d: [60, -40], ch: [17] },
+  { t: 'ELEVATOR TRAY', s: 'steps down as it fills', at: () => [31.6, lastState?.stk.y ?? stkY, 1.3], d: [60, 40], ch: [17, 18] },
+  { t: 'FINISHED STACK', s: 'in run order', at: () => [30.1, (lastState?.stk.y ?? 0) + SHS * RUN_N, 1.05 + (lastState?.stk.cart ?? 0)], d: [-60, -50], ch: [18] },
+  { t: 'TROLLEY', at: () => [28.5, 0.5, 1.3 + (lastState?.stk.cart ?? 0)], d: [-50, 40], ch: [18] },
 ];
 
 const updateLabels = createLabels(LABELS, camera);
@@ -949,6 +971,7 @@ mm.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   add('polyline', { points: P0.pts.map((p) => p.join(',')).join(' '), class: 'mm-path' });
   add('polyline', { points: P1.pts.map((p) => p.join(',')).join(' '), class: 'mm-path' });
   add('polyline', { points: P2.pts.map((p) => p.join(',')).join(' '), class: 'mm-path' });
+  add('polyline', { points: stkBranch.map((p) => p.join(',')).join(' '), class: 'mm-path' });
   add('polyline', { points: belt.loop.pts.map((p) => p.join(',')).join(' '), class: 'mm-belt' });
   mm.trail1 = add('polyline', { points: '', class: 'mm-trail' });
   mm.trail2 = add('polyline', { points: '', class: 'mm-trail2' });
@@ -1021,7 +1044,7 @@ let solidK = solidOn() ? 1 : 0;
 
 // ------------------------------------------------------------------ loop
 runLoop({
-  intro: INTRO, tEnd: T_END, composer, playSeconds: 155,
+  intro: INTRO, tEnd: T_END, composer, playSeconds: 165,
   frame({ t, reveal, dt, time }) {
     const st = computeState(t);
     updateReveal(reveal);
