@@ -755,6 +755,27 @@ export function createPress(scene, pal = PALETTES.light) {
     for (let y = -0.23; y < -0.03; y += 0.1) sb.seg(-L / 2, y, W / 2, L / 2, y, W / 2);
     tray.add(sb.build(mats.stack, sm('sPaper')));
     out.tray = tray;
+    // stacker: the tray steps down along its normal as the stack grows, so
+    // the top sheet stays level with the exit; side joggers (fixed to the
+    // finisher, not the tray) tap each new sheet square
+    out.trayBase = tray.position.clone();
+    out.trayNormal = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
+    const jg = new THREE.Group();
+    jg.position.copy(tray.position);
+    jg.rotation.z = ang;
+    root.add(jg);
+    out.joggers = [-1, 1].map((sz) => {
+      const p = new THREE.Group();
+      const pb = new Batch();
+      pb.rectZ(-L / 2 + 0.35, -0.28, L / 2 - 0.45, 0.22, 0);
+      pb.seg(-L / 2 + 0.35, -0.03, 0, L / 2 - 0.45, -0.03, 0);
+      // arm back to the finisher wall
+      pb.seg(-L / 2 + 0.35, 0.22, 0, -L / 2 + 0.05, 0.22, 0);
+      p.add(pb.build(mats.mech));
+      p.userData.side = sz;
+      jg.add(p);
+      return p;
+    });
   }
 
   // ============================================================ assemble

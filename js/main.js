@@ -164,8 +164,8 @@ const CH = [
   },
   {
     t0: 0.86, kicker: 'Finishing', title: 'Onto the stack',
-    body: 'Finally the sheet rises to the top of the finisher, and the exit rollers lay it neatly on the stack with the rest of your job. The same unit can also staple, hole-punch or fold booklets.',
-    specs: [['Delivery', 'top tray'], ['Options', 'staple · punch · booklet']],
+    body: 'Finally the sheet rises to the top of the finisher, and the exit rollers lay it on the stack with the rest of your job. Side joggers tap it square, and the tray steps down so the next sheet lands at the same height. The same unit can also staple, hole-punch or fold booklets.',
+    specs: [['Delivery', 'top tray'], ['Stacking', 'jogged · tray lowers'], ['Options', 'staple · punch · booklet']],
   },
   {
     t0: 0.95, kicker: 'Summary', title: 'The whole journey',
@@ -199,7 +199,7 @@ const CH = [
   },
   {
     t0: tOfU(2 * (RUN_N - 1) * SLOT + FEED + 4), kicker: 'Production run', title: 'Emptying the loop',
-    body: 'After the last front is printed, only backs are left to do, so gaps open up as the duplex loop empties. Every sheet still lands on the stack in order, printed on both sides and ready for finishing.',
+    body: 'After the last front is printed, only backs are left to do, so gaps open up as the duplex loop empties. Every sheet still lands on the stack in order, jogged square as the tray steps down beneath it, printed on both sides and ready for finishing.',
     specs: [['Sheets delivered', `${RUN_N} of ${RUN_N}`], ['Order on the stack', `1 → ${RUN_N}`], ['Sides printed', String(2 * RUN_N)]],
   },
 ];
@@ -425,7 +425,23 @@ function computeState(t) {
       return { s, D, pass, path: pass ? P2 : P1, head: pass ? D - off2 : D, on: s > 0, done: D >= K2.end };
     });
   }
+  // stacker: each sheet lands, the joggers tap it square, then the tray
+  // steps down one sheet so the top of the stack stays level with the exit
+  const a4 = stackPhase(D - K2.end, (t - 0.946) * 80);
+  const rs = st.runs ? st.runs.map((r) => stackPhase(r.D - K2.end)) : [];
+  st.stack = {
+    a4, runs: rs,
+    drop: SH * (a4.settle + rs.reduce((n, p) => n + p.settle, 0)),
+    jog: Math.max(a4.jog, ...rs.map((p) => p.jog)),
+  };
   return st;
+}
+const SH = 0.03; // sheet thickness on the stack (exaggerated)
+// e = distance past the resting point (or `after` for the main-story sheet,
+// which stops dead there)
+function stackPhase(e, after = e) {
+  const w = (a, b) => clamp((after - a) / (b - a));
+  return { land: clamp(e + 1), jog: Math.sin(Math.PI * w(0.05, 0.55)), sq: ease(w(0.05, 0.3)), settle: ease(w(0.45, 0.9)) };
 }
 
 const q = [0, 0, 0, 0];
@@ -472,7 +488,10 @@ function writeSheet(sh, path, head, len, pass, skew = 0, lift = 0) {
 }
 
 function updateSheets(st) {
-  writeSheet(sheetA4, st.path, st.head, L, st.pass, st.skew);
+  // sheets land a touch off-square (alternately left / right) until jogged
+  const { a4, runs: rs, drop } = st.stack;
+  const off = (p, k) => 0.8 * k * p.land * (1 - p.sq);
+  writeSheet(sheetA4, st.path, st.head, L, st.pass, st.skew + off(a4, 1), (SH - drop) * a4.land);
   const vis = st.longA > 0.001;
   sheetLong.mesh.visible = sheetLong.outline.visible = vis;
   if (vis) {
@@ -486,8 +505,8 @@ function updateSheets(st) {
     sh.mesh.visible = sh.outline.visible = on;
     if (!on) return;
     // settles onto the stack, above the sheets already delivered
-    const land = clamp((r.D - K2.end + 1) / 1);
-    writeSheet(sh, r.path, r.head, L, r.pass, 0, 0.03 * (i + 1) * land);
+    const p = rs[i];
+    writeSheet(sh, r.path, r.head, L, r.pass, off(p, i % 2 ? 1 : -1), (SH * (i + 2) - drop) * p.land);
     const a = clamp(r.s / 0.4); // peels off the top of the feeder stack
     sh.mat.uniforms.uAlpha.value = a;
     sh.outline.material.opacity = a;
@@ -630,6 +649,11 @@ function updateMechanics(st, time) {
   press.out.ext.position.x = -press.out.extLen * (1 - st.outExt);
   press.out.ext.visible = st.outExt > 0.001;
   press.out.stop.rotation.z = (-st.outExt * Math.PI) / 2;
+
+  // stacker tray steps down as the stack grows; joggers close in on each new sheet
+  const o = press.out;
+  o.tray.position.copy(o.trayBase).addScaledVector(o.trayNormal, -st.stack.drop);
+  for (const j of o.joggers) j.position.z = j.userData.side * (W / 2 + lerp(0.22, 0.008, st.stack.jog));
 }
 
 // ------------------------------------------------------------------ intro reveal
@@ -706,7 +730,7 @@ const CAMS = [
   // production run: the whole paper path, the engine and loop, then delivery
   () => ({ p: V(18.5, 12.5, 37), t: V(17.4, 5.4, 0) }),
   () => ({ p: V(13.5, 11.5, 24), t: V(15.2, 5.6, 0) }),
-  () => ({ p: V(36, 15.5, 27), t: V(30, 8, 0) }),
+  () => ({ p: V(38.5, 12.5, 20), t: V(31.5, 7, 0) }),
 ];
 const rig = createCameraRig(camera, { CH, CAMS, tEnd: T_END });
 function updateCamera(st, dt) {
@@ -869,6 +893,7 @@ const LABELS = [
 
   { t: 'EXIT ROLLS', at: [31.7, 8.7, 1.35], d: [-40, -50], ch: [10] },
   { t: 'BOOKLET MAKER', at: [29.4, 3.1, 1.3], d: [50, 40], ch: [10] },
+  { t: 'JOGGERS', s: 'square each sheet', at: [outTray.x + 0.4, outTray.y + 0.2, W / 2 + 0.1], d: [-10, -70], ch: [10, 17] },
 
   { t: 'LONG-SHEET EXTENSION', at: [-1.6, FEED_Y_UPPER - 0.06, 1.3], d: [-40, 50], ch: [12] },
   { t: 'UPPER TRAY', s: 'long sheets', at: [1.4, FEED_Y_UPPER - 0.9, 1.05], d: [-50, 60], ch: [12] },
