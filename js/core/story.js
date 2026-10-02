@@ -37,15 +37,42 @@ export function createChapters({ CH, tEnd, intro }) {
     const b = document.createElement('button');
     b.innerHTML = `<span class="lbl">${String(i).padStart(2, '0')} ${c.title}</span><span class="tick"></span>`;
     b.setAttribute('aria-label', c.title);
-    b.addEventListener('click', () => {
-      const max = document.documentElement.scrollHeight - innerHeight;
-      const next = i + 1 < CH.length ? CH[i + 1].t0 : tEnd;
-      const tt = i === 0 ? 0 : i === CH.length - 1 ? tEnd : c.t0 + (next - c.t0) * 0.02;
-      scrollTo({ top: scrollToStory(tt, intro, tEnd) * max, behavior: 'smooth' });
-    });
+    b.addEventListener('click', () => go(i));
     rail.appendChild(b);
   });
   const railBtns = [...rail.children];
+
+  // Jump to the start of chapter i. While the smooth scroll is in flight the
+  // panel still shows the old chapter, so `pending` lets repeated arrow clicks
+  // step on from the chapter already requested.
+  let pending = null, pendingTimer = 0;
+  function go(i) {
+    i = Math.max(0, Math.min(CH.length - 1, i));
+    const max = document.documentElement.scrollHeight - innerHeight;
+    const next = i + 1 < CH.length ? CH[i + 1].t0 : tEnd;
+    const tt = i === 0 ? 0 : i === CH.length - 1 ? tEnd : CH[i].t0 + (next - CH[i].t0) * 0.02;
+    pending = i;
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => (pending = null), 1500);
+    syncNav();
+    scrollTo({ top: scrollToStory(tt, intro, tEnd) * max, behavior: 'smooth' });
+  }
+  const cur = () => pending ?? shown;
+  addEventListener('scrollend', () => (pending = null));
+  for (const ev of ['wheel', 'touchstart']) addEventListener(ev, () => (pending = null), { passive: true });
+
+  const prevBtn = $('.ch-prev'), nextBtn = $('.ch-next');
+  function syncNav() {
+    prevBtn.disabled = cur() <= 0;
+    nextBtn.disabled = cur() >= CH.length - 1;
+  }
+  prevBtn.addEventListener('click', () => go(cur() - 1));
+  nextBtn.addEventListener('click', () => go(cur() + 1));
+  addEventListener('keydown', (e) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.target.closest?.('input, textarea, select')) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); go(cur() + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(cur() - 1); }
+  });
 
   let shown = -1;
   function show(i) {
@@ -61,6 +88,7 @@ export function createChapters({ CH, tEnd, intro }) {
     panel.body.textContent = c.body;
     panel.specs.innerHTML = c.specs.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     railBtns.forEach((b, k) => b.classList.toggle('on', k === i));
+    syncNav();
 
     animate(panel.title.querySelectorAll('.c'), {
       opacity: [0, 1], translateY: ['0.4em', '0em'], duration: 520, delay: stagger(16), ease: 'outExpo',
@@ -214,10 +242,25 @@ export function bindSolid() {
 }
 
 // Autoplay: scrolls the page at a steady rate from the frame loop; any manual
-// scroll input (wheel, touch, keys, clicks elsewhere) hands control back.
+// scroll input (wheel, touch, keys, clicks elsewhere) hands control back. The
+// speed button cycles the rate and is remembered per browser.
+const SPEEDS = [1, 1.5, 2, 3];
 function createPlayer(seconds) {
-  const btn = $('.play-toggle');
+  const btn = $('.play-toggle'), speedBtn = $('.speed-toggle');
   let playing = false, pos = 0;
+  let speed = 1;
+  try { speed = SPEEDS.includes(+localStorage.getItem('dg-speed')) ? +localStorage.getItem('dg-speed') : 1; } catch (e) {}
+  const syncSpeed = () => {
+    speedBtn.textContent = `${speed}×`;
+    speedBtn.title = `Playback speed ${speed}× (click to change)`;
+    speedBtn.setAttribute('aria-label', `Playback speed ${speed} times`);
+  };
+  syncSpeed();
+  speedBtn.addEventListener('click', () => {
+    speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+    try { localStorage.setItem('dg-speed', String(speed)); } catch (e) {}
+    syncSpeed();
+  });
   function set(on) {
     playing = on;
     btn.setAttribute('aria-pressed', String(on));
@@ -229,12 +272,12 @@ function createPlayer(seconds) {
     if (pos === 0) scrollTo(0, 0);
   }
   btn.addEventListener('click', () => set(!playing));
-  const stop = (e) => { if (playing && !btn.contains(e.target)) set(false); };
+  const stop = (e) => { if (playing && !btn.contains(e.target) && !speedBtn.contains(e.target)) set(false); };
   for (const ev of ['wheel', 'touchstart', 'pointerdown', 'keydown']) addEventListener(ev, stop, { passive: true });
   return function step(dt) {
     if (!playing) return;
     const max = document.documentElement.scrollHeight - innerHeight;
-    pos = Math.min(max, pos + (max / seconds) * dt);
+    pos = Math.min(max, pos + (max / seconds) * speed * dt);
     scrollTo(0, pos);
     if (pos >= max) set(false);
   };
