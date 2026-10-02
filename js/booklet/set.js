@@ -6,11 +6,12 @@
 //   sc  – set centre along the table path T (while flat)
 //   p   – how far the spine has travelled along its path G (0 = still flat)
 //   q   – squareness of the spine (0 round → 1 square), per Z behind the roller
+//   trim – once face-trimmed, how much of each half is left behind the spine
 //
-// The fold blade pushes up from below, so the bottom sheet wraps innermost and
-// the top sheet (which carries the staple crowns) becomes the cover. Once
-// through the slot each sheet's two halves lie either side of G, offset by its
-// wrap radius r_i. The outer sheets spend more paper going round the spine, so
+// The fold blade pushes from the bottom sheet's side, so that sheet wraps
+// innermost and the top sheet (which carries the staple crowns) becomes the
+// cover. Once through the nip each sheet's two halves lie either side of G,
+// offset by its wrap radius r_i. The outer sheets spend more paper going round the spine, so
 // the inner pages push out further at the fore-edge — creep falls out of the
 // arc-length bookkeeping rather than being faked.
 import * as THREE from 'three';
@@ -252,9 +253,10 @@ export function createSet(scene, mat, outlineMat, stapleMat) {
 const qT = [0, 0, 0, 0], qG = [0, 0, 0, 0];
 const X = new THREE.Vector3(), Y = new THREE.Vector3(), Zv = new THREE.Vector3(), M = new THREE.Matrix4();
 
-// st: { T, G, sc, p, q, qz (roller z, squared behind it), explode, drive, clinch, alpha }
+// st: { T, G, sc, p, q, qz (roller z, squared behind it), trim, explode, drive, clinch, alpha }
 export function writeSet(set, st) {
   const { T, G, sc, p } = st;
+  const keep = st.trim ?? Infinity;
   const vis = st.alpha > 0.001;
   for (const s of set.sheets) s.mesh.visible = s.outline.visible = vis;
   for (const s of set.staples) s.visible = vis && st.drive > 0.001;
@@ -283,7 +285,7 @@ export function writeSet(set, st) {
       // spine region needs a z-dependent profile; the rest is the same along z
       const inSpine = au < arcSp && r > 1e-5;
       if (!inSpine) {
-        const a2 = au - arcSp;
+        const a2 = Math.min(au - arcSp, keep);
         if (p > 0 && a2 <= p) {
           G.sample(p - a2, qT);
           px = qT[0] + qT[3] * h * r;

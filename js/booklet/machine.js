@@ -1,7 +1,10 @@
-// Wireframe model of a hand-fed booklet maker with an in-line square-back unit
-// (after the Morgana BM60 + Squarefold 104): side feed table, two stitch heads
-// over clinchers, a fold blade pushing up into a fold-roller nip, then a route
-// over and down to the squarefold and out onto a belt stacker.
+// Wireframe model of a hand-fed booklet-making line, after Doggett's Morgana
+// BM350 with its SQF squarefold and FTR face-trimmer modules. The set is laid
+// on the feed table on top of the booklet maker, drawn in through a slot and
+// dropped down a near-vertical pocket onto a stop. Two stitch heads staple it
+// from the side, the stop drops it to the fold line and a blade pushes its
+// middle into the fold rollers. The booklet then travels flat, spine first,
+// through the squarefold and the trimmer and out onto the belt delivery.
 // Units: 1 = 100 mm. X = length (feed → delivery), Y = up, Z = depth (+ = front).
 // The model is built feeding towards +X; the page mirrors it so sets are fed
 // from the right, as on Doggett's machine.
@@ -14,41 +17,42 @@ export const SL = 4.2;       // A3 sheet length along the feed (420 mm)
 export const SW = 2.97;      // sheet width across the machine (297 mm)
 export const NS = 6;         // sheets in the set → 24 pages
 export const TH = 0.025;     // drawn sheet spacing (2.5 mm, ~25× real 80 gsm)
-export const XS = 2.4;       // stitch line
-export const XF = 5.6;       // fold line
+export const R_OUT = (NS - 0.5) * TH; // spine outer face ahead of the fold line
 export const STAPLE_Z = [-0.74, 0.74];
-export const CAB = { x0: 0, x1: 13, y1: 10.2, z: 2.6 };
+// modules: booklet maker (810 × 752 × 1010 mm), squarefold, trimmer
+export const MODS = { bm: [0, 8.1], sqf: [8.1, 12.6], trm: [12.6, 18.6] };
+export const CAB = { x0: 0, x1: 18.6, y1: 10.1, z: 3.76 };
+export const DECK_Y = CAB.y1 + 0.25; // feed table surface on top of the booklet maker
+export const X_DROP = 5.6;   // the vertical stitch / fold pocket
+export const YS = 7.2;       // set centre at the stitch heads
+export const YF = 5.4;       // fold line, then the booklet's flat path height
 export const SQF_X = 11.2;   // squarefold spine stop
+export const TRIM_X = 17.6;  // trimmer book stop (spine)
+export const TRIM_KEEP = 1.8; // booklet depth left after the face trim (from the spine)
+export const X_KNIFE = TRIM_X - R_OUT - 0.01 - TRIM_KEEP;
 
 // ---------------------------------------------------------------- paths
-// T: the table, from the outside feed tray (sloping gently down into the
-// machine) through the stitch and fold positions. The set's centre moves along it.
-// P: the spine's route once folded. It starts at the fold slot, rises through
-// the fold rollers, runs over the top and down the back of the cabinet to the
-// squarefold, then out onto the belt stacker.
+// T: the feed table on top of the booklet maker, then down through the slot
+// into the pocket. The set's centre moves along it.
+// P: the spine's route once folded: out of the fold rollers and flat through
+// the squarefold and trimmer, then onto the belt delivery.
 export function buildPaths() {
-  const T = new PathBuilder(-5.0, 6.594, -4).toX(-0.9).arc(2.5, 4).toX(10).build();
-  const ty = T.pts.at(-1)[1];
-  const P = new PathBuilder(XF, ty, 90)
+  const T = new PathBuilder(-0.2, DECK_Y, 0).toX(X_DROP - 0.6).arc(0.6, -90).toY(2.4).build();
+  const P = new PathBuilder(X_DROP, YF, 0)
     .mark('slot')
-    .toY(ty + 0.75).mark('nip')
-    .toY(9.0)
-    .arc(0.7, -90).mark('top')
-    .toX(8.4).mark('down')
-    .arc(0.7, -90)
-    .toY(4.0)
-    .arc(0.7, 90)
+    .toX(X_DROP + 0.75).mark('nip')
     .toX(SQF_X).mark('sqf')
-    .toX(12.9).mark('exit')
-    .arc(2.0, -5)
-    .line(4.2)
+    .toX(TRIM_X).mark('trim')
+    .toX(CAB.x1 + 0.1).mark('exit')
+    .arc(2.0, -4)
+    .line(4.0)
     .build();
-  return { T, P, TABLE_Y: ty };
+  return { T, P, TABLE_Y: DECK_Y };
 }
 
 // ---------------------------------------------------------------- build
 export function createBookletMaker(scene, pal = PALETTES.light) {
-  const { T, P, TABLE_Y: ty } = buildPaths();
+  const { T, P } = buildPaths();
   const root = new THREE.Group();
   scene.add(root);
 
@@ -124,6 +128,7 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
       prev = cur;
     }
   };
+  const sAt = (x) => P.nearest(x, YF);
   // a moving part: its own line batch (+ solid) in a group
   const part = (fn, mat = mats.mech, parent = root) => {
     const b = new Batch();
@@ -136,36 +141,36 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
   };
 
   // ============================================================ floor + dims
-  for (let x = -8; x <= 20; x += 1) (x % 5 === 0 ? gridMajor : grid).seg(x, 0, -8, x, 0, 8);
-  for (let z = -8; z <= 8; z += 1) (z % 5 === 0 ? gridMajor : grid).seg(-8, 0, z, 20, 0, z);
+  for (let x = -6; x <= 26; x += 1) (x % 5 === 0 ? gridMajor : grid).seg(x, 0, -8, x, 0, 8);
+  for (let z = -8; z <= 8; z += 1) (z % 5 === 0 ? gridMajor : grid).seg(-6, 0, z, 26, 0, z);
+  const { x0, x1, y1, z } = CAB;
   {
-    const dz = 4.2;
-    dim.seg(0, 0.01, dz, CAB.x1, 0.01, dz);
-    for (const x of [0, CAB.x1]) { dim.seg(x, 0.01, dz - 0.35, x, 0.01, dz + 0.35); dim.seg(x, 0.01, CAB.z, x, 0.01, dz - 0.35); }
-    dim.seg(CAB.x1 + 1.2, 0, CAB.z, CAB.x1 + 1.2, CAB.y1, CAB.z);
-    dim.seg(CAB.x1 + 0.9, 0, CAB.z, CAB.x1 + 1.5, 0, CAB.z);
-    dim.seg(CAB.x1 + 0.9, CAB.y1, CAB.z, CAB.x1 + 1.5, CAB.y1, CAB.z);
+    // booklet maker width along the front, overall height at the feed end
+    const dz = z + 1.4, [b0, b1] = MODS.bm;
+    dim.seg(b0, 0.01, dz, b1, 0.01, dz);
+    for (const x of [b0, b1]) { dim.seg(x, 0.01, dz - 0.35, x, 0.01, dz + 0.35); dim.seg(x, 0.01, z, x, 0.01, dz - 0.35); }
+    const hx = x0 - 1.2;
+    dim.seg(hx, 0, z, hx, y1, z);
+    dim.seg(hx - 0.3, 0, z, hx + 0.3, 0, z);
+    dim.seg(hx - 0.3, y1, z, hx + 0.3, y1, z);
   }
 
-  // ============================================================ cabinet
-  const { x0, x1, y1, z } = CAB;
+  // ============================================================ cabinets
   const f = z + 0.01;
-  shell.roundBox(x0, 0.4, -z, x1, y1, z, 0.22);
-  {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - 0.4, 2 * z), fillMat);
-    m.position.set((x0 + x1) / 2, (y1 + 0.4) / 2, 0);
+  for (const [a, b] of Object.values(MODS)) {
+    shell.roundBox(a + 0.02, 0.4, -z, b - 0.02, y1, z, 0.18);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(b - a - 0.04, y1 - 0.4, 2 * z), fillMat);
+    m.position.set((a + b) / 2, (y1 + 0.4) / 2, 0);
     m.renderOrder = -1;
     root.add(m);
-  }
-  // raised top cover over the feed / stitch end, a lipped lid on the right
-  shell.roundBox(-0.05, y1, -z + 0.1, 4.3, y1 + 0.25, z - 0.05, 0.15);
-  shell.roundBox(10.4, y1, -z + 0.1, x1 + 0.05, y1 + 0.18, z - 0.05, 0.12);
-  panel.rectY(4.6, -z + 0.4, 10.1, z - 0.4, y1 + 0.005);
-  panel.rectY(5.0, -1.4, 9.7, 1.4, y1 + 0.005);
-  // casters
-  for (const cx of [0.5, x1 - 0.5]) for (const cz of [-z + 0.5, z - 0.5]) {
-    mechDim.circleZ(cx, 0.2, cz, 0.18, 14);
-    mechDim.box(cx - 0.12, 0.34, cz - 0.1, cx + 0.12, 0.4, cz + 0.1);
+    // lift-off top with a finger recess
+    shell.roundBox(a + 0.02, y1, -z + 0.05, b - 0.02, y1 + 0.12, z - 0.05, 0.15);
+    panel.rectY((a + b) / 2 - 0.45, -0.25, (a + b) / 2 + 0.45, 0.25, y1 + 0.125);
+    // casters
+    for (const cx of [a + 0.5, b - 0.5]) for (const cz of [-z + 0.5, z - 0.5]) {
+      mechDim.circleZ(cx, 0.2, cz, 0.18, 14);
+      mechDim.box(cx - 0.12, 0.34, cz - 0.1, cx + 0.12, 0.4, cz + 0.1);
+    }
   }
 
   // solid skin with door openings (faded away after the intro reveal)
@@ -190,14 +195,24 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
     root.add(g);
     doors.push({ g, open, mod: doors.length, mats: dm });
   };
-  door(0.25, 0.6, 4.2, 9.95, 'L', (b, X) => b.rectZ(X(3.8), 4.4, X(3.95), 6.0, 0));
-  door(4.3, 0.6, 12.75, 9.95, 'R', (b, X) => {
-    b.rectZ(X(4.6), 4.4, X(4.75), 6.0, 0);
-    // maker's slash badge (slanted so it reads / / / once the page mirrors the model)
-    for (let k = 0; k < 3; k++) b.poly([[X(5.7 + k * 0.28), 8.5, 0.01], [X(5.4 + k * 0.28), 9.25, 0.01]]);
-    b.rectZ(X(5.15), 8.35, X(6.55), 9.4, 0.005);
-    b.rectZ(X(12.1), 9.2, X(12.4), 9.5, 0.005);
+  // booklet maker: one door below the control panel / badge, hinged at the feed end
+  door(0.25, 0.6, 7.85, 7.9, 'L', (b, X) => {
+    b.rectZ(X(7.2), 4.6, X(7.35), 6.2, 0);
+    b.rectZ(X(0.7), 6.9, X(1.2), 7.4, 0.005); // service label
   });
+  door(MODS.sqf[0] + 0.2, 0.6, MODS.sqf[1] - 0.2, 9.9, 'L', (b, X) => {
+    b.rectZ(X(MODS.sqf[1] - 0.6), 4.6, X(MODS.sqf[1] - 0.45), 6.2, 0);
+    b.rectZ(X(MODS.sqf[0] + 0.5), 8.9, X(MODS.sqf[0] + 1.0), 9.4, 0.005);
+  });
+  door(MODS.trm[0] + 0.2, 0.6, MODS.trm[1] - 0.2, 9.9, 'R', (b, X) => {
+    b.rectZ(X(MODS.trm[0] + 0.45), 4.6, X(MODS.trm[0] + 0.6), 6.2, 0);
+    b.rectZ(X(MODS.trm[1] - 1.4), 8.9, X(MODS.trm[1] - 0.9), 9.4, 0.005);
+  });
+  // booklet maker control panel with the maker's slash badge (slanted so it
+  // reads / / once the page mirrors the model) and the model plate
+  for (let k = 0; k < 2; k++) panel.poly([[6.25 + k * 0.3, 8.55, f + 0.01], [5.95 + k * 0.3, 9.45, f + 0.01]]);
+  panel.rectZ(5.6, 8.3, 7.2, 9.7, f + 0.005);
+  panel.rectZ(0.6, 9.3, 1.5, 9.7, f + 0.005);
   const plane = (geo, mat, px, py, pz, rx = 0, ry = 0, passes = [[mat, SOLID], [mats.cavity, -2]]) => {
     for (const [m, order] of passes) {
       const o = new THREE.Mesh(geo, m);
@@ -221,114 +236,93 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
     plane(new THREE.PlaneGeometry(d, h), side, x1, cy, 0, 0, H);
   }
 
-  // ============================================================ feed table (outside, left)
+  // ============================================================ feed table (on top of the booklet maker)
   {
-    // tray plate following T, with a raised back plate at the machine wall
-    const s0 = 0, s1 = T.nearest(-0.02, ty);
-    const zt = SW / 2 + 0.35;
-    const pts = [];
-    for (let i = 0; i <= 12; i++) { T.sample(s0 + ((s1 - s0) * i) / 12, q); pts.push([q[0], q[1] - 0.03]); }
-    for (const zz of [-zt, zt]) mech.poly(pts.map(([x, y]) => [x, y, zz]));
-    for (const [x, y] of [pts[0], pts.at(-1)]) mech.seg(x, y, -zt, x, y, zt);
-    mechDim.poly(pts.map(([x, y]) => [x, y - 0.12, zt]));
-    mechDim.seg(pts[0][0], pts[0][1], zt, pts[0][0], pts[0][1] - 0.12, zt);
-    // tray front lip + bracket to the cabinet
-    T.sample(0, q);
-    mech.box(q[0] - 0.08, q[1] - 0.03, -zt, q[0], q[1] + 0.3, zt);
-    for (const zz of [-zt + 0.2, zt - 0.2]) mechDim.seg(-1.6, ty - 0.15, zz, 0, ty - 1.4, zz);
-    // raised hood where the tray meets the cabinet (as on the real machine)
-    shell.poly([[-0.9, ty + 0.35, -zt], [-0.9, ty + 1.55, -zt], [0, ty + 2.05, -zt], [0, ty + 0.35, -zt]], true);
-    shell.poly([[-0.9, ty + 0.35, zt], [-0.9, ty + 1.55, zt], [0, ty + 2.05, zt], [0, ty + 0.35, zt]], true);
-    shell.seg(-0.9, ty + 1.55, -zt, -0.9, ty + 1.55, zt);
-    shell.seg(-0.9, ty + 0.35, -zt, -0.9, ty + 0.35, zt);
-    // feed slot in the cabinet wall
-    panel.rectX(0, ty - 0.1, -SW / 2 - 0.2, ty + 0.4, SW / 2 + 0.2);
-    // fixed side guides either side of the set
-    for (const sgn of [-1, 1]) {
-      const zg = sgn * (SW / 2 + 0.07);
-      T.sample(T.nearest(-2.75, ty), q);
-      mech.box(-4.3, q[1] + 0.02, zg - 0.05, -1.2, q[1] + 0.32, zg + 0.05);
-      mech.seg(-2.75, q[1] + 0.02, zg, -2.75, q[1] - 0.23, zg);
-    }
+    const zt = SW / 2 + 0.35, xs = X_DROP - 0.6;
+    // deck plate up to the slot, with a front lip
+    mech.rectY(-0.2, -zt, xs, zt, DECK_Y - 0.02);
+    mechDim.rectY(-0.2, -zt, xs, zt, DECK_Y - 0.14);
+    mech.box(-0.28, DECK_Y - 0.14, -zt, -0.2, DECK_Y + 0.12, zt);
+    for (const zz of [-zt, zt]) mechDim.seg(xs, DECK_Y - 0.14, zz, xs, y1 + 0.12, zz);
+    // raised hood over the back of the table (sloping up to the rear)
+    const zb = -(SW / 2 + 0.15);
+    for (const xx of [-0.1, X_DROP + 0.4]) shell.poly([[xx, y1 + 0.12, zb], [xx, DECK_Y + 0.55, zb], [xx, DECK_Y + 1.3, -z + 0.1], [xx, y1 + 0.12, -z + 0.1]], true);
+    for (const [yy, zz] of [[DECK_Y + 0.55, zb], [DECK_Y + 1.3, -z + 0.1]]) shell.seg(-0.1, yy, zz, X_DROP + 0.4, yy, zz);
+    // side guide along the hood: the operator butts the set against it
+    mech.box(0.2, DECK_Y - 0.02, zb - 0.06, xs - 0.2, DECK_Y + 0.3, zb + 0.04);
+    // slot in the top through to the pocket
+    panel.rectY(xs, -SW / 2 - 0.2, X_DROP + 0.45, SW / 2 + 0.2, y1 + 0.125);
   }
 
-  // ============================================================ table, transport, stitcher
+  // ============================================================ pocket, stitcher, fold
   const heads = [];
   let backstop, blade;
   {
-    // table plate from the wall to past the fold stop, split at the fold slot
-    for (const [a, b] of [[0, XF - 0.06], [XF + 0.06, 8.1]]) {
-      mechDim.rectY(a, -SW / 2 - 0.25, b, SW / 2 + 0.25, ty - 0.01);
+    // pocket back plate (the set's inner side), split at the fold slot
+    for (const [a, b] of [[2.9, YF - 0.06], [YF + 0.06, 9.6]]) {
+      mechDim.rectX(X_DROP - 0.01, a, -SW / 2 - 0.25, b, SW / 2 + 0.25);
     }
-    // transport belts under the table (drive the set in)
-    for (const zz of [-1.05, 1.05]) {
-      for (const yy of [ty - 0.02, ty - 0.22]) mech.seg(0.2, yy, zz, 7.9, yy, zz);
-    }
-    for (const x of [0.3, 3.4, 7.8]) addRotor(x, ty - 0.12, 0.1, 2.4, { src: 'sc', mat: mats.mechDim });
+    // front guide plate above the heads
+    mechDim.rectX(X_DROP + 0.4, YS + 0.6, -SW / 2 - 0.25, 9.6, SW / 2 + 0.25);
+    // feed rollers under the deck, then down the pocket
+    for (const x of [0.6, 3.6]) addRotor(x, DECK_Y - 0.12, 0.1, 2.4, { src: 'sc', mat: mats.mechDim });
+    for (const zz of [-1.05, 1.05]) for (const yy of [DECK_Y - 0.02, DECK_Y - 0.22]) mech.seg(0.5, yy, zz, 3.7, yy, zz);
+    for (const y of [9.1, 8.3]) addRotor(X_DROP - 0.11, y, 0.1, 2.4, { src: 'sc', mat: mats.mechDim, sign: -1 });
 
-    // stitch heads above, clinchers below
+    // stitch heads on the front of the set, clinchers behind the pocket plate
     for (const zc of STAPLE_Z) {
-      mech.box(XS - 0.38, ty + 1.05, zc - 0.3, XS + 0.38, ty + 2.35, zc + 0.3, true);
-      mech.box(XS - 0.3, ty + 2.35, zc - 0.22, XS + 0.3, ty + 2.8, zc + 0.22);   // staple cartridge
-      mechDim.seg(XS, ty + 2.8, zc, XS, ty + 3.3, zc);
+      mech.box(X_DROP + 1.05, YS - 0.38, zc - 0.3, X_DROP + 2.35, YS + 0.38, zc + 0.3, true);
+      mech.box(X_DROP + 2.35, YS - 0.3, zc - 0.22, X_DROP + 2.8, YS + 0.3, zc + 0.22);   // staple cartridge
+      mechDim.seg(X_DROP + 2.8, YS, zc, X_DROP + 3.3, YS, zc);
       const drv = part((b) => {
-        b.box(XS - 0.2, 0, zc - 0.16, XS + 0.2, 0.9, zc + 0.16);
-        b.box(XS - 0.06, -0.05, zc - 0.14, XS + 0.06, 0, zc + 0.14);
+        b.box(0, YS - 0.2, zc - 0.16, 0.9, YS + 0.2, zc + 0.16);
+        b.box(-0.05, YS - 0.06, zc - 0.14, 0, YS + 0.06, zc + 0.14);
       }, mats.mech);
       heads.push(drv);
-      // clincher
-      mech.box(XS - 0.3, ty - 0.62, zc - 0.25, XS + 0.3, ty - 0.08, zc + 0.25);
-      mechDim.rectY(XS - 0.08, zc - 0.14, XS + 0.08, zc + 0.14, ty - 0.08);
+      mech.box(X_DROP - 0.62, YS - 0.3, zc - 0.25, X_DROP - 0.08, YS + 0.3, zc + 0.25);
+      mechDim.rectX(X_DROP - 0.08, YS - 0.08, zc - 0.14, YS + 0.08, zc + 0.14);
     }
-    // head beam
-    mech.box(XS - 0.2, ty + 3.3, -1.6, XS + 0.2, ty + 3.55, 1.6);
-    mechDim.box(XS - 0.4, ty - 0.9, -1.4, XS + 0.4, ty - 0.62, 1.4);
+    mech.box(X_DROP + 3.3, YS - 0.2, -1.6, X_DROP + 3.55, YS + 0.2, 1.6);
+    mechDim.box(X_DROP - 0.9, YS - 0.4, -1.4, X_DROP - 0.62, YS + 0.4, 1.4);
 
-    // back stop fingers at the stitch position (hinged below the table)
+    // stitch stop under the set, hinged on the pocket side, swings down to let it drop
     backstop = part((b) => {
-      for (const zz of [-0.9, 0, 0.9]) b.box(-0.03, 0, zz - 0.12, 0.03, 0.4, zz + 0.12);
+      for (const zz of [-0.9, 0, 0.9]) b.box(0, -0.06, zz - 0.12, 0.7, 0, zz + 0.12);
       b.seg(0, 0, -1.2, 0, 0, 1.2);
     });
-    backstop.position.set(XS + SL / 2 + 0.03, ty - 0.02, 0);
+    backstop.position.set(X_DROP - 0.35, YS - SL / 2 - 0.03, 0);
     // fixed stop at the fold position
-    for (const zz of [-0.9, 0.9]) mech.box(XF + SL / 2 + 0.03, ty, zz - 0.12, XF + SL / 2 + 0.09, ty + 0.4, zz + 0.12);
+    for (const zz of [-0.9, 0.9]) mech.box(X_DROP - 0.3, YF - SL / 2 - 0.09, zz - 0.12, X_DROP + 0.35, YF - SL / 2 - 0.03, zz + 0.12);
 
-    // fold blade below the slot, on a crank
+    // fold blade behind the pocket, on a crank
     blade = part((b) => {
-      b.box(-0.025, -0.7, -1.7, 0.025, 0, 1.7);
-      b.seg(0, -0.7, 0, 0, -1.3, 0);
-      b.box(-0.1, -1.4, -0.3, 0.1, -1.3, 0.3);
+      b.box(-0.7, -0.025, -1.7, 0, 0.025, 1.7);
+      b.seg(-0.7, 0, 0, -1.3, 0, 0);
+      b.box(-1.4, -0.3, -0.3, -1.3, 0.3, 0.3);
     });
-    blade.position.set(XF, ty - 0.25, 0);
-    mechDim.circleZ(XF, ty - 2.3, 0, 0.35, 20);
-    mechDim.box(XF - 0.6, ty - 2.9, -1.2, XF + 0.6, ty - 2.75, 1.2);
-  }
+    blade.position.set(X_DROP - 0.25, YF, 0);
+    mechDim.circleZ(X_DROP - 2.3, YF, 0, 0.35, 20);
+    mechDim.box(X_DROP - 2.9, YF - 1.2, -1.2, X_DROP - 2.75, YF + 1.2, 1.2);
 
-  // ============================================================ fold rollers + riser + top run
-  {
+    // fold rollers (thickness-set nip) and frame
     pairAt(P, P.marks.nip, 0.28, 3.1);
-    guides(P, P.marks.nip + 0.45, P.marks.down + 0.4, 0.22);
-    pairAt(P, P.nearest(XF, 8.4), 0.16, 2.8);
-    pairAt(P, P.nearest(7.4, 9.7), 0.16, 2.8);
-    // fold-roller frame
-    for (const zz of [-1.7, 1.7]) mechDim.rectZ(XF - 0.75, ty + 0.35, XF + 0.75, ty + 1.2, zz);
+    for (const zz of [-1.7, 1.7]) mechDim.rectZ(X_DROP + 0.35, YF - 0.75, X_DROP + 1.2, YF + 0.75, zz);
+    guides(P, P.marks.nip + 0.45, sAt(SQF_X - 1.7), 0.22);
+    pairAt(P, sAt(7.6), 0.16, 2.8);
+    pairAt(P, sAt(8.7), 0.16, 2.8);
   }
 
-  // ============================================================ down + squarefold
+  // ============================================================ squarefold
   const sqf = {};
   {
-    guides(P, P.marks.down + 0.4, P.marks.sqf - 1.4, 0.2);
-    pairAt(P, P.nearest(9.1, 6.4), 0.16, 2.8);
-    pairAt(P, P.nearest(10.0, 3.3), 0.16, 2.8);
-    // squarefold frame
-    mechDim.box(9.6, 2.2, -2.2, 12.2, 4.4, 2.2, true);
-    for (const zz of [-2.2, 2.2]) mechDim.seg(9.6, 3.3, zz, 12.2, 3.3, zz);
+    mechDim.box(SQF_X - 1.6, YF - 1.1, -2.2, SQF_X + 1.0, YF + 1.1, 2.2, true);
+    for (const zz of [-2.2, 2.2]) mechDim.seg(SQF_X - 1.6, YF, zz, SQF_X + 1.0, YF, zz);
     // clamp jaws either side of the booklet, near the spine
     sqf.clamps = [1, -1].map((sgn) => {
       const g = part((b) => {
-        b.box(9.9, 0, -1.8, SQF_X - 0.05, sgn * 0.14, 1.8);
-        b.seg(10.5, sgn * 0.14, 0, 10.5, sgn * 0.6, 0);
-        b.box(10.3, sgn * 0.6, -0.3, 10.7, sgn * 0.75, 0.3);
+        b.box(SQF_X - 1.3, 0, -1.8, SQF_X - 0.05, sgn * 0.14, 1.8);
+        b.seg(SQF_X - 0.7, sgn * 0.14, 0, SQF_X - 0.7, sgn * 0.6, 0);
+        b.box(SQF_X - 0.9, sgn * 0.6, -0.3, SQF_X - 0.5, sgn * 0.75, 0.3);
       });
       g.userData.sgn = sgn;
       return g;
@@ -338,7 +332,7 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
       b.box(0, -0.35, -1.6, 0.06, 0.35, 1.6);
       b.seg(0.03, 0.35, 0, 0.03, 0.9, 0);
     });
-    sqf.stop.position.set(SQF_X + 0.02, 3.3, 0);
+    sqf.stop.position.set(SQF_X + 0.02, YF, 0);
     // forming roller: vertical axis, travels the length of the spine
     sqf.roller = part((b) => {
       const n = 22, r = 0.14, h = 0.5;
@@ -351,16 +345,58 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
       b.seg(0, -h / 2 - 0.2, 0, 0, h / 2 + 0.2, 0);
       b.box(-0.08, h / 2 + 0.2, -0.12, 0.3, h / 2 + 0.35, 0.12);
     }, mats.sensor);
-    // roller carriage rail
-    mech.box(SQF_X + 0.15, 3.3 + 0.6, -2.1, SQF_X + 0.35, 3.3 + 0.7, 2.1);
-    guides(P, P.marks.sqf + 0.35, P.marks.exit - 0.2, 0.2);
-    pairAt(P, P.marks.exit - 0.2, 0.18, 2.8);
+    mech.box(SQF_X + 0.15, YF + 0.6, -2.1, SQF_X + 0.35, YF + 0.7, 2.1);
+    guides(P, P.marks.sqf + 0.35, sAt(MODS.trm[0] + 0.1), 0.2);
+    pairAt(P, sAt(12.2), 0.16, 2.8);
   }
 
-  // ============================================================ deliveries
+  // ============================================================ face trimmer
+  const trim = {};
   {
-    // belt stacker: two belts on a stand, booklets shingle along it
-    const b0 = P.marks.exit + 0.3, b1 = P.total;
+    pairAt(P, sAt(MODS.trm[0] + 0.45), 0.16, 2.8);
+    // bed under the booklet, open in front of the knife so the strip can fall
+    mechDim.rectY(MODS.trm[0] + 0.1, -SW / 2 - 0.25, X_KNIFE - 0.5, SW / 2 + 0.25, YF - 0.17);
+    mechDim.rectY(X_KNIFE + 0.08, -SW / 2 - 0.25, TRIM_X + 0.6, SW / 2 + 0.25, YF - 0.17);
+    // cutting stick under the knife
+    mech.box(X_KNIFE - 0.08, YF - 0.42, -2.0, X_KNIFE + 0.08, YF - 0.3, 2.0);
+    // knife columns, crosshead and drive
+    for (const zz of [-2.35, 2.35]) mech.box(X_KNIFE - 0.12, YF - 0.6, zz - 0.1, X_KNIFE + 0.12, YF + 2.6, zz + 0.1);
+    mech.box(X_KNIFE - 0.3, YF + 2.6, -2.5, X_KNIFE + 0.3, YF + 2.85, 2.5);
+    mechDim.circleZ(X_KNIFE, YF + 3.4, 0, 0.4, 20);
+    mechDim.seg(X_KNIFE, YF + 2.85, 0, X_KNIFE, YF + 3.0, 0);
+    // knife: a vertical blade spanning the booklet, bevel on its lower edge
+    trim.knife = part((b) => {
+      b.box(-0.02, 0.12, -2.2, 0.02, 0.9, 2.2);
+      b.poly([[0.02, 0.12, -2.2], [-0.02, 0, -2.2], [-0.02, 0, 2.2], [0.02, 0.12, 2.2]]);
+      b.seg(-0.02, 0, -2.2, -0.02, 0.12, -2.2);
+      b.seg(-0.02, 0, 2.2, -0.02, 0.12, 2.2);
+      b.box(-0.1, 0.9, -1.0, 0.1, 1.1, 1.0);
+    }, mats.sensor);
+    trim.knife.position.set(X_KNIFE, YF + 0.9, 0);
+    // clamp bar: holds the booklet flat just behind the cut
+    trim.clamp = part((b) => {
+      b.box(X_KNIFE + 0.08, 0, -2.0, X_KNIFE + 1.1, 0.12, 2.0);
+      for (const zz of [-1.2, 1.2]) b.seg(X_KNIFE + 0.6, 0.12, zz, X_KNIFE + 0.6, 0.9, zz);
+    });
+    trim.clamp.position.y = YF + 0.6;
+    // book stop at the spine (lifts to let the booklet out)
+    trim.stop = part((b) => {
+      b.box(0, -0.35, -1.6, 0.06, 0.35, 1.6);
+      b.seg(0.03, 0.35, 0, 0.03, 0.9, 0);
+    });
+    trim.stop.position.set(TRIM_X + 0.02, YF, 0);
+    // waste bin under the knife
+    mechDim.box(X_KNIFE - 1.3, 0.6, -2.6, X_KNIFE + 0.5, 2.4, 2.6, true);
+    for (const zz of [-2.6, 2.6]) mechDim.seg(X_KNIFE - 0.5, YF - 0.17, zz, X_KNIFE - 1.3, 2.4, zz);
+    // out of the trimmer
+    guides(P, sAt(TRIM_X + 0.4), P.marks.exit - 0.25, 0.2);
+    pairAt(P, P.marks.exit - 0.3, 0.16, 2.8);
+  }
+
+  // ============================================================ belt delivery
+  {
+    // two belts on a tray cantilevered off the trimmer, end stop at the far end
+    const b0 = P.marks.exit + 0.15, b1 = P.total;
     const bp = [];
     for (let i = 0; i <= 12; i++) { P.sample(b0 + ((b1 - b0) * i) / 12, q); bp.push([q[0], q[1] - 0.16]); }
     for (const zz of [-0.9, 0.9]) {
@@ -369,8 +405,15 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
       mech.poly(bp.map(([x, y]) => [x, y - 0.2, zz]));
     }
     for (const [x, y] of [bp[0], bp.at(-1)]) addRotor(x, y - 0.1, 0.1, 2.3, { mat: mats.mechDim });
-    mechDim.box(bp[0][0], bp[0][1] - 0.35, -1.3, bp.at(-1)[0], bp.at(-1)[1] - 0.25, 1.3, true);
-    for (const [x] of [bp[2], bp.at(-2)]) for (const zz of [-1.1, 1.1]) mechDim.seg(x, bp[2][1] - 0.35, zz, x, 0, zz);
+    const e = bp.at(-1);
+    mechDim.box(bp[0][0], bp[0][1] - 0.35, -1.7, e[0], e[1] - 0.25, 1.7, true);
+    mech.box(e[0] + 0.1, e[1] - 0.35, -1.7, e[0] + 0.2, e[1] + 0.6, 1.7);
+    for (const zz of [-1.5, 1.5]) mechDim.seg(x1, YF - 1.4, zz, bp[4][0], bp[4][1] - 0.35, zz);
+    // deflector hood over the exit
+    for (const zz of [-1.9, 1.9]) shell.poly([[x1, YF + 0.35, zz], [x1, YF + 1.9, zz], [x1 + 1.1, YF + 0.75, zz], [x1 + 1.1, YF + 0.35, zz]], true);
+    shell.seg(x1 + 1.1, YF + 0.75, -1.9, x1 + 1.1, YF + 0.75, 1.9);
+    shell.seg(x1, YF + 1.9, -1.9, x1, YF + 1.9, 1.9);
+    panel.rectX(x1, YF - 0.3, -SW / 2 - 0.2, YF + 0.3, SW / 2 + 0.2);
   }
 
   // ============================================================ assemble
@@ -415,6 +458,6 @@ export function createBookletMaker(scene, pal = PALETTES.light) {
   }
 
   return {
-    setTheme, setSolid, root, T, P, TABLE_Y: ty, mats, rotors, doors, heads, backstop, blade, sqf,
+    setTheme, setSolid, root, T, P, TABLE_Y: DECK_Y, mats, rotors, doors, heads, backstop, blade, sqf, trim,
   };
 }
